@@ -68,18 +68,36 @@ const LoginForm = () => {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-            className="mx-auto w-24 h-24 bg-gold-gradient rounded-full flex items-center justify-center mb-6 shadow-gold"
+            className="mx-auto w-24 h-24 mb-6"
           >
-            <svg className="w-12 h-12 text-primary-black" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4zM18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" />
-            </svg>
+            {/* Opción 1: Si tu logo está en public */}
+            <img 
+              src="../../assets/images/Orpheo_logo.png"  
+              alt="Logo Orpheo" 
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                // Fallback si no encuentra el logo
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+            
+            {/* Fallback: Logo por defecto */}
+            <div 
+              className="w-full h-full bg-gold-gradient rounded-full flex items-center justify-center shadow-gold"
+              style={{ display: 'none' }}
+            >
+              <svg className="w-12 h-12 text-primary-black" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4zM18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" />
+              </svg>
+            </div>
           </motion.div>
           
-          <h1 className="font-serif text-4xl font-bold text-gold mb-2 tracking-wider">
+          <h1 className="font-serif text-4xl font-bold text-primary-gold mb-2 tracking-wider">
             ORPHEO
           </h1>
           <p className="text-gray-text text-lg tracking-wide">
-            SISTEMA DE GESTIÓN
+            SISTEMA DE GESTIÓN MASÓNICA
           </p>
         </div>
 

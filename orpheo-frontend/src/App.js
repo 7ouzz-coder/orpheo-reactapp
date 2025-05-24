@@ -7,6 +7,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import MiembrosPage from './pages/MiembrosPage';
 import { Analytics } from './utils/analytics';
 import { ErrorReporting } from './utils/errorReporting';
 import './styles/globals.css';
@@ -44,6 +45,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              
+              <Route
+                path="/miembros"
+                element={
+                  <ProtectedRoute>
+                    <MiembrosPage />
                   </ProtectedRoute>
                 }
               />

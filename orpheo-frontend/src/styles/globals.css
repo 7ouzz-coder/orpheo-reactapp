@@ -54,55 +54,40 @@ body {
 }
 
 /* Clases de utilidad personalizadas */
-.text-gold {
-  color: var(--primary-gold);
-}
+@layer utilities {
+  .text-gold {
+    color: var(--primary-gold);
+  }
 
-.text-gold-secondary {
-  color: var(--primary-gold-secondary);
-}
+  .text-gold-secondary {
+    color: var(--primary-gold-secondary);
+  }
 
-.bg-gold-gradient {
-  background: linear-gradient(135deg, var(--primary-gold-light) 0%, var(--primary-gold-secondary) 100%);
-}
+  .bg-gold-gradient {
+    background: linear-gradient(135deg, var(--primary-gold-light) 0%, var(--primary-gold-secondary) 100%);
+  }
 
-.border-gold {
-  border-color: var(--primary-gold);
-}
+  .border-gold {
+    border-color: var(--primary-gold);
+  }
 
-.shadow-gold {
-  box-shadow: 0 4px 14px 0 rgba(212, 175, 55, 0.3);
-}
-
-/* Animaciones personalizadas */
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-.animate-slide-up {
-  animation: slideUp 0.3s ease-out;
+  .shadow-gold {
+    box-shadow: 0 4px 14px 0 rgba(212, 175, 55, 0.3);
+  }
 }
 
 /* Clases para componentes específicos */
-.orpheo-button {
-  @apply bg-gold-gradient text-primary-black font-semibold py-3 px-6 rounded-lg transition-all duration-300 hover:shadow-gold transform hover:scale-105;
-}
-
-.orpheo-input {
-  @apply bg-primary-black border border-gray-border text-gray-text rounded-lg px-4 py-3 focus:outline-none focus:border-primary-gold transition-colors duration-300;
-}
-
-.orpheo-card {
-  @apply bg-primary-black-secondary border border-gray-border rounded-xl p-6 shadow-lg;
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
+@layer components {
   .orpheo-button {
-    @apply py-2 px-4 text-sm;
+    @apply bg-gold-gradient text-primary-black font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105;
+    box-shadow: 0 4px 14px 0 rgba(212, 175, 55, 0.3);
   }
-  
+
   .orpheo-input {
-    @apply py-2 px-3 text-sm;
+    @apply bg-primary-black border border-gray-border text-gray-text rounded-lg px-4 py-3 focus:outline-none focus:border-primary-gold transition-colors duration-300;
+  }
+
+  .orpheo-card {
+    @apply bg-primary-black-secondary border border-gray-border rounded-xl p-6 shadow-lg;
   }
 }
