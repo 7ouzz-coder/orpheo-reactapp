@@ -1,186 +1,280 @@
 import React from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { selectSidebarOpen, setSidebarOpen } from '../../store/slices/uiSlice';
 import { selectUser } from '../../store/slices/authSlice';
-import { logoutUser } from '../../store/slices/authSlice';
-import { ROUTES } from '../../utils/constants';
+import { selectSidebarOpen, toggleSidebar } from '../../store/slices/uiSlice';
 
 const Sidebar = () => {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
   const location = useLocation();
-  const sidebarOpen = useSelector(selectSidebarOpen);
   const user = useSelector(selectUser);
+  const sidebarOpen = useSelector(selectSidebarOpen);
 
   const menuItems = [
     {
-      path: ROUTES.DASHBOARD,
+      path: '/dashboard',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
         </svg>
       ),
-      label: 'Inicio',
+      label: 'Dashboard',
       available: true,
     },
     {
-      path: ROUTES.MIEMBROS,
+      path: '/miembros',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-1a4 4 0 11-8 0 4 4 0 018 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
       ),
       label: 'Miembros',
-      available: false, // Próximamente
+      available: true,
     },
     {
-      path: ROUTES.DOCUMENTOS,
+      path: '/documentos',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       ),
       label: 'Documentos',
-      available: false, // Próximamente
+      available: true, // ✅ Ahora está disponible
     },
     {
-      path: ROUTES.PROGRAMAS,
+      path: '/programas',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       ),
       label: 'Programas',
-      available: false, // Próximamente
+      available: false,
+      badge: 'Pronto',
+    },
+    {
+      path: '/perfil',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      ),
+      label: 'Mi Perfil',
+      available: false,
+      badge: 'Pronto',
     },
   ];
 
-  const handleLogout = () => {
-    dispatch(logoutUser());
-    navigate('/login');
-  };
+  // Agregar item de admin solo para administradores
+  if (user?.role === 'admin' || user?.role === 'superadmin') {
+    menuItems.push({
+      path: '/admin',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+      label: 'Administración',
+      available: false,
+      badge: 'Pronto',
+    });
+  }
 
-  const handleMenuClick = (path, available) => {
-    if (!available) {
-      // Mostrar toast de "próximamente"
-      return;
+  const isActive = (path) => {
+    if (path === '/dashboard') {
+      return location.pathname === '/' || location.pathname === '/dashboard';
     }
-    navigate(path);
-    if (window.innerWidth < 1024) {
-      dispatch(setSidebarOpen(false));
-    }
+    return location.pathname.startsWith(path);
   };
 
   return (
     <>
+      {/* Desktop Sidebar */}
       <motion.aside
-        initial={{ x: -300 }}
-        animate={{ x: 0 }}
-        className={`fixed left-0 top-16 h-full bg-primary-black-secondary border-r border-gray-border z-20 transition-all duration-300 ${
-          sidebarOpen ? 'w-64' : 'w-16'
-        }`}
+        initial={false}
+        animate={{ width: sidebarOpen ? 256 : 64 }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        className="fixed left-0 top-16 h-[calc(100vh-4rem)] bg-primary-black-secondary border-r border-gray-border z-20 hidden lg:block"
       >
         <div className="flex flex-col h-full">
-          {/* Navigation Menu */}
-          <nav className="flex-1 px-4 py-6 space-y-2">
-            {menuItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              
-              return (
-                <motion.button
-                  key={item.path}
-                  onClick={() => handleMenuClick(item.path, item.available)}
-                  className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg transition-all duration-200 group relative ${
-                    isActive
-                      ? 'bg-primary-gold text-primary-black'
-                      : item.available
-                      ? 'text-gray-text hover:bg-primary-gold/10 hover:text-primary-gold'
-                      : 'text-gray-border opacity-50 cursor-not-allowed'
-                  }`}
-                  whileHover={item.available ? { scale: 1.02 } : {}}
-                  whileTap={item.available ? { scale: 0.98 } : {}}
-                >
-                  <div className={`${isActive ? 'text-primary-black' : ''}`}>
-                    {item.icon}
-                  </div>
-                  
-                  {sidebarOpen && (
-                    <span className="font-medium">
-                      {item.label}
-                    </span>
-                  )}
-                  
-                  {!item.available && sidebarOpen && (
-                    <span className="ml-auto text-xs bg-gray-border/20 text-gray-border px-2 py-1 rounded">
-                      Próximamente
-                    </span>
-                  )}
-                  
-                  {/* Tooltip for collapsed sidebar */}
-                  {!sidebarOpen && (
-                    <div className="absolute left-full ml-2 px-2 py-1 bg-primary-black-secondary text-gray-text text-sm rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                      {item.label}
-                      {!item.available && (
-                        <span className="text-xs text-gray-border"> (Próximamente)</span>
+          {/* Toggle button */}
+          <div className="p-4 border-b border-gray-border">
+            <button
+              onClick={() => dispatch(toggleSidebar())}
+              className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-primary-gold/10 transition-colors"
+            >
+              <svg 
+                className={`w-5 h-5 text-primary-gold transition-transform duration-300 ${
+                  sidebarOpen ? 'rotate-180' : ''
+                }`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 p-4 space-y-2">
+            {menuItems.map((item) => (
+              <div key={item.path} className="relative">
+                {item.available ? (
+                  <NavLink
+                    to={item.path}
+                    className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 ${
+                      isActive(item.path)
+                        ? 'bg-primary-gold text-primary-black shadow-gold'
+                        : 'text-gray-text hover:bg-primary-gold/10 hover:text-primary-gold'
+                    }`}
+                  >
+                    <div className="flex-shrink-0">
+                      {item.icon}
+                    </div>
+                    
+                    {sidebarOpen && (
+                      <motion.span
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.1 }}
+                        className="font-medium"
+                      >
+                        {item.label}
+                      </motion.span>
+                    )}
+                  </NavLink>
+                ) : (
+                  <div
+                    className={`flex items-center space-x-3 p-3 rounded-lg opacity-50 cursor-not-allowed ${
+                      sidebarOpen ? 'justify-between' : 'justify-center'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="flex-shrink-0 text-gray-border">
+                        {item.icon}
+                      </div>
+                      
+                      {sidebarOpen && (
+                        <motion.span
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.1 }}
+                          className="font-medium text-gray-border"
+                        >
+                          {item.label}
+                        </motion.span>
                       )}
                     </div>
-                  )}
-                </motion.button>
-              );
-            })}
+                    
+                    {sidebarOpen && item.badge && (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="text-xs bg-primary-gold/20 text-primary-gold px-2 py-1 rounded-full"
+                      >
+                        {item.badge}
+                      </motion.span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </nav>
 
-          {/* Admin Section */}
-          {user?.role === 'admin' && (
-            <div className="px-4 py-4 border-t border-gray-border">
-              <motion.button
-                onClick={() => handleMenuClick('/admin', false)}
-                className="w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-gray-border opacity-50 cursor-not-allowed"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                {sidebarOpen && (
-                  <>
-                    <span className="font-medium">Administración</span>
-                    <span className="ml-auto text-xs bg-gray-border/20 text-gray-border px-2 py-1 rounded">
-                      Próximamente
-                    </span>
-                  </>
+          {/* User info section */}
+          {sidebarOpen && user && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="p-4 border-t border-gray-border"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-primary-gold rounded-full flex items-center justify-center text-xs font-bold text-primary-black">
+                  {user.memberFullName ? user.memberFullName.split(' ').map(n => n[0]).join('').substring(0, 2) : 'U'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-text truncate">
+                    {user.memberFullName || user.username}
+                  </p>
+                  <p className="text-xs text-gray-border capitalize">
+                    {user.grado}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </motion.aside>
+
+      {/* Mobile Sidebar */}
+      <motion.aside
+        initial={{ x: '-100%' }}
+        animate={{ x: sidebarOpen ? 0 : '-100%' }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-primary-black-secondary border-r border-gray-border z-30 lg:hidden"
+      >
+        <div className="flex flex-col h-full">
+          {/* Navigation */}
+          <nav className="flex-1 p-4 space-y-2">
+            {menuItems.map((item) => (
+              <div key={item.path}>
+                {item.available ? (
+                  <NavLink
+                    to={item.path}
+                    onClick={() => dispatch(toggleSidebar())}
+                    className={`flex items-center justify-between p-3 rounded-lg transition-all duration-200 ${
+                      isActive(item.path)
+                        ? 'bg-primary-gold text-primary-black shadow-gold'
+                        : 'text-gray-text hover:bg-primary-gold/10 hover:text-primary-gold'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      {item.icon}
+                      <span className="font-medium">{item.label}</span>
+                    </div>
+                  </NavLink>
+                ) : (
+                  <div className="flex items-center justify-between p-3 rounded-lg opacity-50 cursor-not-allowed">
+                    <div className="flex items-center space-x-3">
+                      <div className="text-gray-border">
+                        {item.icon}
+                      </div>
+                      <span className="font-medium text-gray-border">{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="text-xs bg-primary-gold/20 text-primary-gold px-2 py-1 rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 )}
-              </motion.button>
+              </div>
+            ))}
+          </nav>
+
+          {/* User info section */}
+          {user && (
+            <div className="p-4 border-t border-gray-border">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary-gold rounded-full flex items-center justify-center font-bold text-primary-black">
+                  {user.memberFullName ? user.memberFullName.split(' ').map(n => n[0]).join('').substring(0, 2) : 'U'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-text truncate">
+                    {user.memberFullName || user.username}
+                  </p>
+                  <p className="text-sm text-gray-border capitalize">
+                    {user.grado} {user.cargo && `• ${user.cargo}`}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
-
-          {/* User Section */}
-          <div className="px-4 py-4 border-t border-gray-border">
-            <motion.button
-              onClick={() => handleMenuClick('/perfil', false)}
-              className="w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-gray-text hover:bg-primary-gold/10 hover:text-primary-gold transition-all duration-200 mb-2"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              {sidebarOpen && <span className="font-medium">Perfil</span>}
-            </motion.button>
-
-            <motion.button
-              onClick={handleLogout}
-              className="w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-red-400 hover:bg-red-900/20 transition-all duration-200"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              {sidebarOpen && <span className="font-medium">Cerrar Sesión</span>}
-            </motion.button>
-          </div>
         </div>
       </motion.aside>
     </>

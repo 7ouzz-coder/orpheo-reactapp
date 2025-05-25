@@ -72,7 +72,7 @@ const LoginForm = () => {
           >
             {/* Opción 1: Si tu logo está en public */}
             <img 
-              src="../../assets/images/Orpheo_logo.png"  
+              src="../assets/images/Orpheo_logo.png"  
               alt="Logo Orpheo" 
               className="w-full h-full object-contain"
               onError={(e) => {
@@ -97,7 +97,7 @@ const LoginForm = () => {
             ORPHEO
           </h1>
           <p className="text-gray-text text-lg tracking-wide">
-            SISTEMA DE GESTIÓN MASÓNICA
+            SISTEMA DE GESTIÓN
           </p>
         </div>
 
