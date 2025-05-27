@@ -3,7 +3,7 @@ require('dotenv').config();
 module.exports = {
   development: {
     username: process.env.DB_USERNAME || 'orpheo_user',
-    password: process.env.DB_PASSWORD || 'orpheo_password',
+    password: process.env.DB_PASSWORD || 'orpheo_secure_2025', // ✅ CORREGIDO
     database: process.env.DB_NAME || 'orpheo_db',
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,
@@ -13,11 +13,17 @@ module.exports = {
       timestamps: true,
       underscored: true,
       freezeTableName: true,
+    },
+    pool: {
+      max: 10,
+      min: 0,
+      acquire: 30000,
+      idle: 10000,
     }
   },
   test: {
     username: process.env.DB_USERNAME || 'orpheo_user',
-    password: process.env.DB_PASSWORD || 'orpheo_password',
+    password: process.env.DB_PASSWORD || 'orpheo_secure_2025', // ✅ CORREGIDO
     database: process.env.DB_NAME_TEST || 'orpheo_db_test',
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,
@@ -43,6 +49,12 @@ module.exports = {
         require: true,
         rejectUnauthorized: false
       }
+    },
+    pool: {
+      max: 20,
+      min: 5,
+      acquire: 30000,
+      idle: 10000,
     }
   }
 };
