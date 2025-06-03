@@ -4,9 +4,9 @@ const path = require('path');
 
 const Documento = sequelize.define('Documento', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
-    autoIncrement: true,
   },
   nombre: {
     type: DataTypes.STRING(255),

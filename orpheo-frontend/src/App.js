@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MiembrosPage from './pages/MiembrosPage';
 import DocumentosPage from './pages/DocumentosPage';
+import ProgramasPage from './pages/ProgramasPage';
 import './styles/globals.css';
 
 function App() {
@@ -65,23 +66,11 @@ function App() {
               }
             />
             
-            {/* Rutas futuras - por ahora redirigen al dashboard */}
             <Route
               path="/programas"
               element={
                 <ProtectedRoute>
-                  <div className="min-h-screen bg-primary-black flex items-center justify-center">
-                    <div className="text-center">
-                      <h1 className="text-3xl font-serif text-primary-gold mb-4">Programas</h1>
-                      <p className="text-gray-text mb-6">Módulo en desarrollo</p>
-                      <button
-                        onClick={() => window.history.back()}
-                        className="orpheo-button"
-                      >
-                        Volver
-                      </button>
-                    </div>
-                  </div>
+                  <ProgramasPage />
                 </ProtectedRoute>
               }
             />

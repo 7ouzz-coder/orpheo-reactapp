@@ -2,10 +2,13 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 const Asistencia = sequelize.define('Asistencia', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
+  programa_id: {
+  type: DataTypes.UUID,
+  allowNull: false,
+  references: {
+    model: 'programas',
+    key: 'id'
+    }
   },
   programa_id: {
     type: DataTypes.INTEGER,
@@ -16,7 +19,7 @@ const Asistencia = sequelize.define('Asistencia', {
     }
   },
   miembro_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'miembros',
@@ -42,7 +45,7 @@ const Asistencia = sequelize.define('Asistencia', {
   
   // Registro de quien toma la asistencia
   registrado_por_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
     references: {
       model: 'users',

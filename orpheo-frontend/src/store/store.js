@@ -3,6 +3,7 @@ import authSlice from './slices/authSlice';
 import uiSlice from './slices/uiSlice';
 import miembrosSlice from './slices/miembrosSlice';
 import documentosSlice from './slices/documentosSlice';
+import programasSlice from './slices/programasSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     ui: uiSlice,
     miembros: miembrosSlice,
     documentos: documentosSlice,
+    programas: programasSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

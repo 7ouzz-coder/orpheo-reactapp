@@ -50,8 +50,7 @@ const Sidebar = () => {
         </svg>
       ),
       label: 'Programas',
-      available: false,
-      badge: 'Pronto',
+      available: true,
     },
     {
       path: '/perfil',

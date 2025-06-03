@@ -4,9 +4,9 @@ const sequelize = require('../config/database');
 
 const User = sequelize.define('User', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
-    autoIncrement: true,
   },
   username: {
     type: DataTypes.STRING(50),
@@ -50,10 +50,10 @@ const User = sequelize.define('User', {
     allowNull: true,
   },
   miembro_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
     references: {
-      model: 'Miembros',
+      model: 'miembros', // ✅ CORREGIDO: minúscula
       key: 'id'
     }
   },

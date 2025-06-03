@@ -135,17 +135,15 @@ const startServer = async () => {
     await db.authenticate();
     logger.info('✅ Conexión a base de datos establecida');
     
-    // Sincronizar modelos (solo en desarrollo)
-    if (process.env.NODE_ENV === 'development') {
-      await db.sync({ alter: true });
-      logger.info('✅ Modelos sincronizados con la base de datos');
-    }
+    // ✅ REMOVIDO: No usar sync en desarrollo para evitar conflictos
+    // Solo verificar conexión, las tablas se crean con migraciones
     
     // Iniciar servidor
     server.listen(PORT, () => {
       logger.info(`🚀 Servidor ejecutándose en puerto ${PORT}`);
       logger.info(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔗 URL: http://localhost:${PORT}`);
+      logger.info('💡 Usa migraciones para crear/actualizar tablas: npm run migrate');
     });
     
   } catch (error) {

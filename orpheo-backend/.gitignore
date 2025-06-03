@@ -1,0 +1,74 @@
+# ===== DEPENDENCIAS =====
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== VARIABLES DE ENTORNO =====
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ===== LOGS =====
+logs/
+*.log
+
+# ===== UPLOADS Y ARCHIVOS TEMPORALES =====
+uploads/
+temp/
+tmp/
+
+# ===== BASE DE DATOS =====
+*.sqlite
+*.sqlite3
+*.db
+
+# ===== BACKUPS =====
+backups/
+*.sql
+*.dump
+
+# ===== COVERAGE Y TESTING =====
+coverage/
+.nyc_output/
+.coverage/
+
+# ===== EDITORES E IDEs =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== SISTEMA OPERATIVO =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===== RUNTIME DATA =====
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ===== CACHE =====
+.npm
+.eslintcache
+
+# ===== OPCIONAL - BUILD =====
+dist/
+build/
+
+# ===== PM2 =====
+ecosystem.config.js
+
+# ===== CERTIFICADOS SSL =====
+*.pem
+*.key
+*.crt

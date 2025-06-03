@@ -223,10 +223,11 @@ export const ERROR_MESSAGES = {
 // Configuración de localStorage
 export const STORAGE_KEYS = {
   TOKEN: 'orpheo_token',
+  REFRESH_TOKEN: 'orpheo_refresh_token', // ✅ AGREGAR ESTA LÍNEA
   USER: 'orpheo_user',
   PREFERENCES: 'orpheo_preferences',
   THEME: 'orpheo_theme',
-  SIDEBAR_STATE: 'orpheo_sidebar_state',
+  LANGUAGE: 'orpheo_language',
 };
 
 // Configuración de animaciones

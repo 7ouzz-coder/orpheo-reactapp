@@ -2,10 +2,13 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 const Notificacion = sequelize.define('Notificacion', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
+  usuario_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    }
   },
   titulo: {
     type: DataTypes.STRING(255),
@@ -42,7 +45,7 @@ const Notificacion = sequelize.define('Notificacion', {
     allowNull: true,
   },
   relacionado_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
   },
   
@@ -77,13 +80,13 @@ const Notificacion = sequelize.define('Notificacion', {
    defaultValue: 'system',
  },
  remitente_id: {
-   type: DataTypes.INTEGER,
-   allowNull: true,
-   references: {
-     model: 'users',
-     key: 'id'
-   }
- },
+  type: DataTypes.UUID,
+  allowNull: true,
+  references: {
+    model: 'users',
+    key: 'id'
+    }
+  },
  remitente_nombre: {
    type: DataTypes.STRING(100),
    allowNull: true,

@@ -3,9 +3,9 @@ const sequelize = require('../config/database');
 
 const Programa = sequelize.define('Programa', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
-    autoIncrement: true,
   },
   tema: {
     type: DataTypes.STRING(255),

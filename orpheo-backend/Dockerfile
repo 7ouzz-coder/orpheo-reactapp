@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
 # Información del mantenedor
-LABEL maintainer="tu-email@ejemplo.com"
+LABEL maintainer="Guillermo1858@gmail.com"
 LABEL description="Orpheo Backend API"
 
 # Instalar dependencias del sistema
