@@ -1,57 +1,41 @@
-// ===== ARCHIVO: src/services/api.js =====
 import axios from 'axios';
-import { store } from '../store/store';
-import { logout } from '../store/slices/authSlice';
-import toast from 'react-hot-toast';
-
-// Configuración base de la API
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+import * as SecureStore from 'expo-secure-store';
+import ENV from '../config/env';
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: ENV.API_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor para agregar token automáticamente
 api.interceptors.request.use(
-  (config) => {
-    const state = store.getState();
-    const token = state.auth.token;
-    
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    try {
+      const token = await SecureStore.getItemAsync('authToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.error('Error getting token:', error);
     }
-    
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar respuestas y errores
 api.interceptors.response.use(
-  (response) => {
-    return response.data;
-  },
-  (error) => {
-    const { response } = error;
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      await SecureStore.deleteItemAsync('authToken');
+    }
     
-    if (response?.status === 401) {
-      store.dispatch(logout());
-      toast.error('Sesión expirada. Por favor, inicia sesión nuevamente.');
-      window.location.href = '/login';
-    } else if (response?.status === 403) {
-      toast.error('No tienes permisos para realizar esta acción.');
-    } else if (response?.status >= 500) {
-      toast.error('Error interno del servidor. Intenta nuevamente.');
-    } else if (response?.data?.message) {
-      toast.error(response.data.message);
-    } else {
-      toast.error('Error de conexión. Verifica tu conexión a internet.');
+    if (error.code === 'ECONNABORTED') {
+      error.message = 'Tiempo de espera agotado. Verifica tu conexión.';
+    } else if (error.message === 'Network Error') {
+      error.message = 'Error de conexión. Verifica tu internet.';
     }
     
     return Promise.reject(error);

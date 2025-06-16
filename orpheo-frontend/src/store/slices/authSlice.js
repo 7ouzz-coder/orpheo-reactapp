@@ -1,71 +1,68 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { authService } from '../../services/auth.service';
+import * as SecureStore from 'expo-secure-store';
+import authService from '../../services/authService';
 
-// Thunks asíncronos actualizados para tu servicio
 export const loginUser = createAsyncThunk(
-  'auth/login',
-  async ({ username, password }, { rejectWithValue }) => {
+  'auth/loginUser',
+  async (credentials, { rejectWithValue }) => {
     try {
-      const response = await authService.login(username, password);
-      return response;
-    } catch (error) {
-      return rejectWithValue({ message: error.message });
-    }
-  }
-);
-
-export const verifyToken = createAsyncThunk(
-  'auth/verify',
-  async (_, { rejectWithValue }) => {
-    try {
-      if (!authService.isAuthenticated()) {
-        throw new Error('No token found');
+      const response = await authService.login(credentials);
+      
+      // Guardar token en SecureStore (máxima seguridad)
+      if (response.token) {
+        await SecureStore.setItemAsync('authToken', response.token);
       }
       
-      const response = await authService.verifyToken();
       return response;
     } catch (error) {
-      return rejectWithValue({ message: error.message });
+      return rejectWithValue(
+        error.response?.data?.message || 'Error al iniciar sesión'
+      );
     }
   }
 );
 
 export const logoutUser = createAsyncThunk(
-  'auth/logout',
-  async (_, { rejectWithValue }) => {
+  'auth/logoutUser',
+  async () => {
     try {
       await authService.logout();
-      return {};
     } catch (error) {
-      // Incluso si falla el logout en el servidor, limpiamos localmente
-      return {};
+      // Ignorar errores del servidor
     }
+    await SecureStore.deleteItemAsync('authToken');
+    return null;
   }
 );
 
-export const refreshToken = createAsyncThunk(
-  'auth/refresh',
+export const getCurrentUser = createAsyncThunk(
+  'auth/getCurrentUser',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await authService.refreshToken();
+      const token = await SecureStore.getItemAsync('authToken');
+      if (!token) {
+        throw new Error('No token found');
+      }
+      
+      const response = await authService.getCurrentUser();
       return response;
     } catch (error) {
-      return rejectWithValue({ message: error.message });
+      await SecureStore.deleteItemAsync('authToken');
+      return rejectWithValue('Token inválido');
     }
   }
 );
 
-// Slice actualizado
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
-    user: authService.getCurrentUser(),
-    token: authService.getToken(),
-    isAuthenticated: authService.isAuthenticated(),
-    isLoading: false,
+    user: null,
+    token: null,
+    isAuthenticated: false,
+    loading: false,
     error: null,
     loginAttempts: 0,
-    lastLoginAttempt: null,
+    maxLoginAttempts: 3,
   },
   reducers: {
     clearError: (state) => {
@@ -73,101 +70,57 @@ const authSlice = createSlice({
     },
     resetLoginAttempts: (state) => {
       state.loginAttempts = 0;
-      state.lastLoginAttempt = null;
-    },
-    logout: (state) => {
-      state.user = null;
-      state.token = null;
-      state.isAuthenticated = false;
-      state.error = null;
-      // El servicio se encarga de limpiar localStorage
-      authService.logout();
-    },
-    // Acción para cuando se recarga la página
-    restoreAuth: (state) => {
-      state.user = authService.getCurrentUser();
-      state.token = authService.getToken();
-      state.isAuthenticated = authService.isAuthenticated();
     },
   },
   extraReducers: (builder) => {
     builder
-      // Login
       .addCase(loginUser.pending, (state) => {
-        state.isLoading = true;
+        state.loading = true;
         state.error = null;
       })
       .addCase(loginUser.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.loading = false;
+        state.isAuthenticated = true;
         state.user = action.payload.user;
         state.token = action.payload.token;
-        state.isAuthenticated = true;
         state.loginAttempts = 0;
-        state.lastLoginAttempt = null;
-        state.error = null;
       })
       .addCase(loginUser.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload?.message || 'Error de autenticación';
+        state.loading = false;
+        state.error = action.payload;
         state.loginAttempts += 1;
-        state.lastLoginAttempt = new Date().toISOString();
-        state.isAuthenticated = false;
-        state.user = null;
-        state.token = null;
       })
-      
-      // Verify Token
-      .addCase(verifyToken.pending, (state) => {
-        state.isLoading = true;
-      })
-      .addCase(verifyToken.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.user = action.payload.user;
-        state.isAuthenticated = true;
-        state.error = null;
-      })
-      .addCase(verifyToken.rejected, (state, action) => {
-        state.isLoading = false;
-        state.user = null;
-        state.token = null;
-        state.isAuthenticated = false;
-        state.error = action.payload?.message || 'Token inválido';
-      })
-      
-      // Refresh Token
-      .addCase(refreshToken.fulfilled, (state, action) => {
-        state.token = action.payload.token;
-        if (action.payload.user) {
-          state.user = action.payload.user;
-        }
-        state.isAuthenticated = true;
-        state.error = null;
-      })
-      .addCase(refreshToken.rejected, (state) => {
-        state.user = null;
-        state.token = null;
-        state.isAuthenticated = false;
-      })
-      
-      // Logout
       .addCase(logoutUser.fulfilled, (state) => {
         state.user = null;
         state.token = null;
         state.isAuthenticated = false;
+        state.loading = false;
         state.error = null;
-        state.isLoading = false;
+        state.loginAttempts = 0;
+      })
+      .addCase(getCurrentUser.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(getCurrentUser.fulfilled, (state, action) => {
+        state.loading = false;
+        state.isAuthenticated = true;
+        state.user = action.payload.user;
+      })
+      .addCase(getCurrentUser.rejected, (state) => {
+        state.loading = false;
+        state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
       });
   },
 });
 
-export const { clearError, resetLoginAttempts, logout, restoreAuth } = authSlice.actions;
+export const { clearError, resetLoginAttempts } = authSlice.actions;
+export default authSlice.reducer;
 
-// Selectores
 export const selectAuth = (state) => state.auth;
 export const selectUser = (state) => state.auth.user;
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
-export const selectIsLoading = (state) => state.auth.isLoading;
-export const selectError = (state) => state.auth.error;
-export const selectToken = (state) => state.auth.token;
-
-export default authSlice.reducer;
+export const selectAuthLoading = (state) => state.auth.loading;
+export const selectAuthError = (state) => state.auth.error;
+export const selectCanLogin = (state) => state.auth.loginAttempts < state.auth.maxLoginAttempts;
