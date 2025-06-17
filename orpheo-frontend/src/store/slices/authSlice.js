@@ -62,7 +62,7 @@ const authSlice = createSlice({
     loading: false,
     error: null,
     loginAttempts: 0,
-    maxLoginAttempts: 3,
+    maxLoginAttempts: 999,
   },
   reducers: {
     clearError: (state) => {

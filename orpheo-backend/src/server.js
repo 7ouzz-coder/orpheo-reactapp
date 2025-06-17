@@ -21,7 +21,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: process.env.CORS_ORIGIN || "192.168.195.117:3000",
     methods: ["GET", "POST"]
   }
 });
@@ -61,12 +61,37 @@ app.use(helmet({
 app.use(compression());
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 
-// CORS
+// CORS optimizado para Expo React Native
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (Expo/React Native)
+    if (!origin) return callback(null, true);
+    
+    // Permitir localhost y IPs locales para desarrollo
+    if (process.env.NODE_ENV === 'development') {
+      if (origin.includes('localhost') || 
+          origin.includes('127.0.0.1') || 
+          origin.includes('192.168.') || 
+          origin.includes('10.0.') ||
+          origin.includes('expo.dev') ||
+          origin.includes('exp://')) {
+        return callback(null, true);
+      }
+    }
+    
+    // En producción, usar CORS_ORIGIN del .env
+    if (origin === process.env.CORS_ORIGIN) {
+      return callback(null, true);
+    }
+    
+    // Rechazar otros orígenes
+    callback(new Error('No permitido por CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Authorization'],
+  optionsSuccessStatus: 200 // Para navegadores legacy
 }));
 
 // Body parsing
@@ -128,6 +153,25 @@ app.use('*', (req, res) => {
   });
 });
 
+// Headers adicionales para React Native/Expo
+app.use((req, res, next) => {
+  // Permitir todos los orígenes en desarrollo
+  if (process.env.NODE_ENV === 'development') {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+  res.header('Access-Control-Max-Age', '86400'); // Cache preflight por 24h
+  
+  // Responder inmediatamente a preflight OPTIONS
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
+
 // Inicializar base de datos y servidor
 const startServer = async () => {
   try {
@@ -135,14 +179,11 @@ const startServer = async () => {
     await db.authenticate();
     logger.info('✅ Conexión a base de datos establecida');
     
-    // ✅ REMOVIDO: No usar sync en desarrollo para evitar conflictos
-    // Solo verificar conexión, las tablas se crean con migraciones
-    
     // Iniciar servidor
     server.listen(PORT, () => {
       logger.info(`🚀 Servidor ejecutándose en puerto ${PORT}`);
       logger.info(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`🔗 URL: http://localhost:${PORT}`);
+      logger.info(`🔗 URL: 192.168.195.117:${PORT}`);
       logger.info('💡 Usa migraciones para crear/actualizar tablas: npm run migrate');
     });
     

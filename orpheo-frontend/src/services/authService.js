@@ -16,12 +16,12 @@ const authService = {
     return response.data;
   },
 
-  // Get current user - compatible con tu endpoint GET /api/auth/me
+  // Get current user - compatible con tu endpoint GET /api/auth/verify
   getCurrentUser: async () => {
-    const response = await api.get('/auth/me');
+    const response = await api.get('/auth/verify');
     return response.data;
   },
-
+  
   // Verificar token
   verifyToken: async (token) => {
     const response = await api.post('/auth/verify', { token });

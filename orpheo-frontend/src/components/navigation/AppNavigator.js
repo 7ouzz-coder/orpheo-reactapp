@@ -11,6 +11,7 @@ import LoginScreen from '../../screens/auth/LoginScreen';
 import DashboardScreen from '../../screens/dashboard/DashboardScreen';
 import MiembrosNavigator from './MiembrosNavigator';
 import PerfilScreen from '../../screens/perfil/PerfilScreen';
+import ConnectionTest from '../debug/ConnectionTest'; // 🔥 Componente temporal
 import { View, ActivityIndicator } from 'react-native';
 
 const Stack = createNativeStackNavigator();
@@ -36,6 +37,9 @@ const MainTabNavigator = () => {
               break;
             case 'Programas':
               iconName = 'calendar-today';
+              break;
+            case 'ConnectionTest': // 🔥 Tab temporal
+              iconName = 'bug-report';
               break;
             case 'Perfil':
               iconName = 'person';
@@ -70,6 +74,17 @@ const MainTabNavigator = () => {
         name="Miembros" 
         component={MiembrosNavigator}
         options={{ title: 'Miembros', headerShown: false }}
+      />
+      {/* 🔥 Tab temporal para testing */}
+      <Tab.Screen 
+        name="ConnectionTest" 
+        component={ConnectionTest}
+        options={{ title: 'Test' }}
+      />
+      <Tab.Screen 
+        name="LoginDebug" 
+        component={require('../debug/LoginDebug').default}
+        options={{ title: 'Debug' }}
       />
       <Tab.Screen 
         name="Perfil" 

@@ -53,13 +53,13 @@ const authController = {
       }
 
       // Verificar si la cuenta está bloqueada
-      if (user.isLocked()) {
+      /*if (user.isLocked()) {
         logger.warn(`Intento de login en cuenta bloqueada - ${username}`);
         return res.status(423).json({
           success: false,
           message: 'Cuenta temporalmente bloqueada debido a múltiples intentos fallidos'
         });
-      }
+      }*/
 
       // Verificar si la cuenta está activa
       if (!user.is_active) {
