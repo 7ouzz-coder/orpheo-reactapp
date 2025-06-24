@@ -1,17 +1,18 @@
-// ===== SEEDER CON DATOS INICIALES =====
+// ===== SEEDER CON DATOS INICIALES - CORREGIDO =====
 'use strict';
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
     
     // ===== 1. INSERTAR MIEMBROS =====
     const miembrosIds = [
-      '550e8400-e29b-41d4-a716-446655440101',
-      '550e8400-e29b-41d4-a716-446655440102', 
-      '550e8400-e29b-41d4-a716-446655440103',
-      '550e8400-e29b-41d4-a716-446655440104',
-      '550e8400-e29b-41d4-a716-446655440105'
+      uuidv4(), // 0
+      uuidv4(), // 1
+      uuidv4(), // 2
+      uuidv4(), // 3
+      uuidv4()  // 4
     ];
 
     await queryInterface.bulkInsert('miembros', [
@@ -105,9 +106,18 @@ module.exports = {
     // ===== 2. INSERTAR USUARIOS =====
     const hashedPassword = await bcrypt.hash('password123', 12);
     
+    const usersIds = [
+      uuidv4(), // admin
+      uuidv4(), // venerable
+      uuidv4(), // secretario
+      uuidv4(), // maestro1
+      uuidv4(), // companero1
+      uuidv4()  // aprendiz1
+    ];
+    
     await queryInterface.bulkInsert('users', [
       {
-        id: '550e8400-e29b-41d4-a716-446655440001',
+        id: usersIds[0],
         username: 'admin',
         email: 'admin@orpheo.cl',
         password: hashedPassword,
@@ -119,7 +129,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        id: '550e8400-e29b-41d4-a716-446655440002',
+        id: usersIds[1],
         username: 'venerable',
         email: 'vm@orpheo.cl',
         password: hashedPassword,
@@ -133,7 +143,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        id: '550e8400-e29b-41d4-a716-446655440003',
+        id: usersIds[2],
         username: 'secretario',
         email: 'secretario@orpheo.cl',
         password: hashedPassword,
@@ -147,7 +157,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        id: '550e8400-e29b-41d4-a716-446655440004',
+        id: usersIds[3],
         username: 'maestro1',
         email: 'maestro1@orpheo.cl',
         password: hashedPassword,
@@ -161,7 +171,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        id: '550e8400-e29b-41d4-a716-446655440005',
+        id: usersIds[4],
         username: 'companero1',
         email: 'companero1@orpheo.cl',
         password: hashedPassword,
@@ -174,7 +184,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        id: '550e8400-e29b-41d4-a716-446655440006',
+        id: usersIds[5],
         username: 'aprendiz1',
         email: 'aprendiz1@orpheo.cl',
         password: hashedPassword,
@@ -190,9 +200,9 @@ module.exports = {
 
     // ===== 3. INSERTAR PROGRAMAS DE EJEMPLO =====
     const programasIds = [
-      '550e8400-e29b-41d4-a716-446655440201',
-      '550e8400-e29b-41d4-a716-446655440202',
-      '550e8400-e29b-41d4-a716-446655440203'
+      uuidv4(),
+      uuidv4(),
+      uuidv4()
     ];
 
     await queryInterface.bulkInsert('programas', [
@@ -206,7 +216,7 @@ module.exports = {
         grado: 'maestro',
         tipo: 'tenida',
         estado: 'programado',
-        responsable_id: '550e8400-e29b-41d4-a716-446655440002',
+        responsable_id: usersIds[1],
         responsable_nombre: 'Juan Carlos González López',
         ubicacion: 'Templo Masónico',
         requiere_confirmacion: true,
@@ -225,7 +235,7 @@ module.exports = {
         grado: 'maestro',
         tipo: 'ceremonia',
         estado: 'programado',
-        responsable_id: '550e8400-e29b-41d4-a716-446655440003',
+        responsable_id: usersIds[2],
         responsable_nombre: 'Pedro Antonio Martínez Silva',
         ubicacion: 'Templo Masónico',
         requiere_confirmacion: true,
@@ -244,7 +254,7 @@ module.exports = {
         grado: 'companero',
         tipo: 'instruccion',
         estado: 'programado',
-        responsable_id: '550e8400-e29b-41d4-a716-446655440005',
+        responsable_id: usersIds[4],
         responsable_nombre: 'Luis Fernando Rodríguez Pérez',
         ubicacion: 'Sala de Instrucción',
         requiere_confirmacion: true,
@@ -256,9 +266,14 @@ module.exports = {
     ], {});
 
     // ===== 4. INSERTAR DOCUMENTOS DE EJEMPLO =====
+    const documentosIds = [
+      uuidv4(),
+      uuidv4()
+    ];
+
     await queryInterface.bulkInsert('documentos', [
       {
-        id: '550e8400-e29b-41d4-a716-446655440301',
+        id: documentosIds[0],
         nombre: 'Reglamento General de la Logia',
         tipo: 'pdf',
         descripcion: 'Reglamento interno y normas de funcionamiento',
@@ -266,9 +281,9 @@ module.exports = {
         subcategoria: 'reglamentación',
         palabras_clave: 'reglamento, normas, funcionamiento',
         es_plancha: false,
-        autor_id: '550e8400-e29b-41d4-a716-446655440002',
+        autor_id: usersIds[1],
         autor_nombre: 'Juan Carlos González López',
-        subido_por_id: '550e8400-e29b-41d4-a716-446655440002',
+        subido_por_id: usersIds[1],
         subido_por_nombre: 'Juan Carlos González López',
         version: 1,
         descargas: 0,
@@ -278,7 +293,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        id: '550e8400-e29b-41d4-a716-446655440302',
+        id: documentosIds[1],
         nombre: 'Plancha: La Simbología en el Grado de Maestro',
         tipo: 'pdf',
         descripcion: 'Trabajo de investigación sobre los símbolos masónicos',
@@ -288,9 +303,9 @@ module.exports = {
         es_plancha: true,
         plancha_id: 'PL-2025-001',
         plancha_estado: 'pendiente',
-        autor_id: '550e8400-e29b-41d4-a716-446655440004',
+        autor_id: usersIds[3],
         autor_nombre: 'Carlos Eduardo Hernández Muñoz',
-        subido_por_id: '550e8400-e29b-41d4-a716-446655440004',
+        subido_por_id: usersIds[3],
         subido_por_nombre: 'Carlos Eduardo Hernández Muñoz',
         version: 1,
         descargas: 0,
@@ -302,62 +317,136 @@ module.exports = {
     ], {});
 
     // ===== 5. INSERTAR ASISTENCIAS DE EJEMPLO =====
-        await queryInterface.bulkInsert('asistencias', [
-        {
-        id: '550e8400-e29b-41d4-a716-446655440401',
+    const asistenciasIds = [
+      uuidv4(),
+      uuidv4(),
+      uuidv4()
+    ];
+
+    await queryInterface.bulkInsert('asistencias', [
+      {
+        id: asistenciasIds[0],
         programa_id: programasIds[0],
         miembro_id: miembrosIds[0],
         asistio: false,
         confirmado: true,
-        registrado_por_id: '550e8400-e29b-41d4-a716-446655440002',
+        registrado_por_id: usersIds[1],
         registrado_por_nombre: 'Juan Carlos González López',
-        hora_registro: new Date(), // ✅ AGREGADO
+        hora_registro: new Date(),
         nombre_miembro: 'Juan Carlos González López',
         grado_miembro: 'maestro',
         created_at: new Date(),
         updated_at: new Date()
-    },
-    {
-        id: '550e8400-e29b-41d4-a716-446655440402',
+      },
+      {
+        id: asistenciasIds[1],
         programa_id: programasIds[0],
         miembro_id: miembrosIds[1],
         asistio: false,
         confirmado: true,
-        registrado_por_id: '550e8400-e29b-41d4-a716-446655440003',
+        registrado_por_id: usersIds[2],
         registrado_por_nombre: 'Pedro Antonio Martínez Silva',
-        hora_registro: new Date(), // ✅ AGREGADO
+        hora_registro: new Date(),
         nombre_miembro: 'Pedro Antonio Martínez Silva',
         grado_miembro: 'maestro',
         created_at: new Date(),
         updated_at: new Date()
-    },
-    {
-        id: '550e8400-e29b-41d4-a716-446655440403',
+      },
+      {
+        id: asistenciasIds[2],
         programa_id: programasIds[2],
         miembro_id: miembrosIds[2],
         asistio: false,
         confirmado: false,
-        hora_registro: new Date(), // ✅ AGREGADO
+        hora_registro: new Date(),
         nombre_miembro: 'Luis Fernando Rodríguez Pérez',
         grado_miembro: 'companero',
         created_at: new Date(),
         updated_at: new Date()
-    }
+      }
+    ], {});
+
+    // ===== 6. INSERTAR NOTIFICACIONES DE EJEMPLO =====
+    const notificacionesIds = [
+      uuidv4(),
+      uuidv4(),
+      uuidv4()
+    ];
+
+    await queryInterface.bulkInsert('notificaciones', [
+      {
+        id: notificacionesIds[0],
+        titulo: 'Bienvenido al Sistema Orpheo',
+        mensaje: 'Tu cuenta ha sido activada exitosamente. Puedes comenzar a usar todas las funcionalidades del sistema.',
+        tipo: 'sistema',
+        usuario_id: usersIds[0],
+        prioridad: 'normal',
+        leido: false,
+        remitente_tipo: 'system',
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        id: notificacionesIds[1],
+        titulo: 'Nueva Tenida Programada',
+        mensaje: 'Se ha programado una nueva tenida ordinaria para el 15 de enero. Por favor confirma tu asistencia.',
+        tipo: 'programa',
+        relacionado_tipo: 'programa',
+        relacionado_id: programasIds[0],
+        usuario_id: usersIds[3],
+        prioridad: 'alta',
+        leido: false,
+        remitente_tipo: 'user',
+        remitente_id: usersIds[1],
+        remitente_nombre: 'Juan Carlos González López',
+        accion_url: `/programas/${programasIds[0]}`,
+        accion_texto: 'Ver Programa',
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        id: notificacionesIds[2],
+        titulo: 'Documento Pendiente de Aprobación',
+        mensaje: 'Hay una plancha pendiente de tu aprobación como Venerable Maestro.',
+        tipo: 'plancha',
+        relacionado_tipo: 'documento',
+        relacionado_id: documentosIds[1],
+        usuario_id: usersIds[1],
+        prioridad: 'alta',
+        leido: false,
+        remitente_tipo: 'system',
+        accion_url: `/documentos/${documentosIds[1]}`,
+        accion_texto: 'Revisar Plancha',
+        created_at: new Date(),
+        updated_at: new Date()
+      }
     ], {});
 
     console.log('✅ Datos iniciales insertados correctamente:');
-    console.log('   - 5 Miembros');
-    console.log('   - 6 Usuarios');
-    console.log('   - 3 Programas');
-    console.log('   - 2 Documentos');
-    console.log('   - 3 Asistencias');
+    console.log(`   - ${miembrosIds.length} Miembros`);
+    console.log(`   - ${usersIds.length} Usuarios`);
+    console.log(`   - ${programasIds.length} Programas`);
+    console.log(`   - ${documentosIds.length} Documentos`);
+    console.log(`   - ${asistenciasIds.length} Asistencias`);
+    console.log(`   - ${notificacionesIds.length} Notificaciones`);
+    console.log('');
+    console.log('🔑 Usuarios de prueba creados:');
+    console.log('   admin/password123 (Super Admin)');
+    console.log('   venerable/password123 (Admin - Venerable Maestro)');
+    console.log('   secretario/password123 (Admin - Secretario)');
+    console.log('   maestro1/password123 (General - Maestro)');
+    console.log('   companero1/password123 (General - Compañero)');
+    console.log('   aprendiz1/password123 (General - Aprendiz)');
   },
 
   async down(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete('notificaciones', null, {});
     await queryInterface.bulkDelete('asistencias', null, {});
     await queryInterface.bulkDelete('documentos', null, {});
     await queryInterface.bulkDelete('programas', null, {});
     await queryInterface.bulkDelete('users', null, {});
     await queryInterface.bulkDelete('miembros', null, {});
+    
+    console.log('✅ Todos los datos de prueba eliminados');
   }
 };

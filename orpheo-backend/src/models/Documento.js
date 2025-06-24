@@ -81,9 +81,9 @@ const Documento = sequelize.define('Documento', {
     allowNull: true,
   },
   
-  // Autor y subido por
+  // Autor y subido por - ✅ CORREGIDO: UUID en lugar de INTEGER
   autor_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
     references: {
       model: 'users',
@@ -95,7 +95,7 @@ const Documento = sequelize.define('Documento', {
     allowNull: true,
   },
   subido_por_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID, // ✅ CORREGIDO: UUID en lugar de INTEGER
     allowNull: false,
     references: {
       model: 'users',
@@ -107,13 +107,13 @@ const Documento = sequelize.define('Documento', {
     allowNull: true,
   },
   
-  // Versioning
+  // Versioning - ✅ CORREGIDO: UUID para documento_padre_id
   version: {
     type: DataTypes.INTEGER,
     defaultValue: 1,
   },
   documento_padre_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID, // ✅ CORREGIDO: UUID en lugar de INTEGER
     allowNull: true,
     references: {
       model: 'documentos',
@@ -157,10 +157,6 @@ const Documento = sequelize.define('Documento', {
     },
     {
       fields: ['created_at']
-    },
-    {
-      type: 'FULLTEXT',
-      fields: ['nombre', 'descripcion', 'palabras_clave']
     }
   ]
 });
@@ -222,26 +218,6 @@ Documento.addScope('porCategoria', (categoria) => ({
 
 Documento.addScope('planchas', {
   where: { es_plancha: true, activo: true }
-});
-
-Documento.addScope('conAutor', {
-  include: [{
-    association: 'autor',
-    attributes: ['id', 'username', 'member_full_name']
-  }]
-});
-
-// Hooks
-Documento.addHook('beforeDestroy', async (documento) => {
-  // Eliminar archivo físico al borrar registro
-  if (documento.ruta_local) {
-    const fs = require('fs').promises;
-    try {
-      await fs.unlink(documento.ruta_local);
-    } catch (error) {
-      console.warn(`No se pudo eliminar archivo: ${documento.ruta_local}`);
-    }
-  }
 });
 
 module.exports = Documento;

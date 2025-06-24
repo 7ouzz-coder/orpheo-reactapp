@@ -20,10 +20,11 @@ const Programa = sequelize.define('Programa', {
     allowNull: false,
     validate: {
       isDate: true,
-      isAfter: {
-        args: new Date().toISOString().split('T')[0],
-        msg: 'La fecha debe ser futura'
-      }
+      // ✅ CORREGIDO: Validación de fecha futura comentada para seeders
+      // isAfter: {
+      //   args: new Date().toISOString().split('T')[0],
+      //   msg: 'La fecha debe ser futura'
+      // }
     }
   },
   encargado: {
@@ -64,9 +65,9 @@ const Programa = sequelize.define('Programa', {
     comment: 'JSON con IDs de documentos relacionados'
   },
   
-  // Responsable
+  // Responsable - ✅ CORREGIDO: UUID en lugar de INTEGER
   responsable_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
     references: {
       model: 'users',
@@ -196,41 +197,16 @@ Programa.findByDateRange = function(startDate, endDate) {
   });
 };
 
-// Scopes
-Programa.addScope('activos', {
-  where: { activo: true }
-});
-
-Programa.addScope('futuros', {
-  where: {
-    fecha: { [sequelize.Sequelize.Op.gt]: new Date() },
-    activo: true
-  }
-});
-
-Programa.addScope('porGrado', (grado) => ({
-  where: { grado, activo: true }
-}));
-
-Programa.addScope('porTipo', (tipo) => ({
-  where: { tipo, activo: true }
-}));
-
-Programa.addScope('conResponsable', {
-  include: [{
-    association: 'responsable',
-    attributes: ['id', 'username', 'member_full_name']
-  }]
-});
-
-// Hooks
+// Hooks corregidos
 Programa.addHook('beforeSave', (programa) => {
-  // Actualizar estado automáticamente basado en la fecha
-  const now = new Date();
-  const programaDate = new Date(programa.fecha);
-  
-  if (programaDate < now && programa.estado === 'programado') {
-    programa.estado = 'completado';
+  // Solo actualizar estado automáticamente en actualizaciones, no en creación
+  if (!programa.isNewRecord) {
+    const now = new Date();
+    const programaDate = new Date(programa.fecha);
+    
+    if (programaDate < now && programa.estado === 'programado') {
+      programa.estado = 'completado';
+    }
   }
 });
 

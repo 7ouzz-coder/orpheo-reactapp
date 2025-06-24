@@ -2,16 +2,13 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 const Asistencia = sequelize.define('Asistencia', {
-  programa_id: {
-  type: DataTypes.UUID,
-  allowNull: false,
-  references: {
-    model: 'programas',
-    key: 'id'
-    }
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
   },
   programa_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID, // ✅ CORREGIDO: UUID, no INTEGER
     allowNull: false,
     references: {
       model: 'programas',
@@ -45,7 +42,7 @@ const Asistencia = sequelize.define('Asistencia', {
   
   // Registro de quien toma la asistencia
   registrado_por_id: {
-    type: DataTypes.UUID,
+    type: DataTypes.UUID, // ✅ CORREGIDO: UUID, no INTEGER
     allowNull: true,
     references: {
       model: 'users',
@@ -125,7 +122,7 @@ Asistencia.prototype.esJustificada = function() {
   return !this.asistio && this.justificacion && this.justificacion.trim() !== '';
 };
 
-// Métodos estáticos
+// Métodos estáticos corregidos
 Asistencia.findByPrograma = function(programaId) {
   return this.findAll({
     where: { programa_id: programaId },
@@ -182,56 +179,7 @@ Asistencia.getEstadisticasByPrograma = function(programaId) {
   });
 };
 
-Asistencia.getEstadisticasByMiembro = function(miembroId) {
-  return this.findAll({
-    attributes: [
-      [sequelize.fn('COUNT', sequelize.col('id')), 'total'],
-      [sequelize.fn('COUNT', sequelize.literal('CASE WHEN asistio = true THEN 1 END')), 'presentes'],
-      [sequelize.fn('COUNT', sequelize.literal('CASE WHEN asistio = false AND justificacion IS NOT NULL AND justificacion != \'\' THEN 1 END')), 'justificados'],
-      [sequelize.fn('COUNT', sequelize.literal('CASE WHEN asistio = false AND (justificacion IS NULL OR justificacion = \'\') THEN 1 END')), 'ausentes']
-    ],
-    where: { miembro_id: miembroId },
-    raw: true
-  }).then(results => {
-    const stats = results[0];
-    return {
-      total: parseInt(stats.total) || 0,
-      presentes: parseInt(stats.presentes) || 0,
-      justificados: parseInt(stats.justificados) || 0,
-      ausentes: parseInt(stats.ausentes) || 0,
-      porcentajeAsistencia: stats.total > 0 ? Math.round((stats.presentes / stats.total) * 100) : 0
-    };
-  });
-};
-
-// Scopes
-Asistencia.addScope('presentes', {
-  where: { asistio: true }
-});
-
-Asistencia.addScope('ausentes', {
-  where: { asistio: false }
-});
-
-Asistencia.addScope('justificados', {
-  where: {
-    asistio: false,
-    justificacion: { [sequelize.Sequelize.Op.ne]: null }
-  }
-});
-
-Asistencia.addScope('confirmados', {
-  where: { confirmado: true }
-});
-
-Asistencia.addScope('conMiembro', {
-  include: [{
-    association: 'miembro',
-    attributes: ['id', 'nombres', 'apellidos', 'grado']
-  }]
-});
-
-// Hooks
+// Hooks corregidos
 Asistencia.addHook('beforeCreate', async (asistencia) => {
   // Cachear datos del miembro para performance
   if (asistencia.miembro_id) {
@@ -241,13 +189,6 @@ Asistencia.addHook('beforeCreate', async (asistencia) => {
       asistencia.nombre_miembro = miembro.getNombreCompleto();
       asistencia.grado_miembro = miembro.grado;
     }
-  }
-});
-
-Asistencia.addHook('beforeUpdate', async (asistencia) => {
-  // Actualizar hora de registro si cambia el estado de asistencia
-  if (asistencia.changed('asistio')) {
-    asistencia.hora_registro = new Date();
   }
 });
 

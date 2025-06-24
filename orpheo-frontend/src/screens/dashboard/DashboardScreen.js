@@ -22,7 +22,7 @@ const DashboardScreen = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
-  const miembros = useSelector(selectMiembros);
+  const miembros = useSelector(selectMiembros) || []; // ✅ Fallback para evitar undefined
   
   const [refreshing, setRefreshing] = React.useState(false);
   const [stats, setStats] = React.useState({
@@ -41,24 +41,42 @@ const DashboardScreen = () => {
     setStats(prev => ({ ...prev, loading: true }));
     
     try {
-      // Cargar miembros para obtener estadísticas reales
-      const result = await dispatch(getMiembros({ page: 1, limit: 100 }));
+      // ✅ Cargar miembros con manejo de errores robusto
+      const result = await dispatch(getMiembros({ page: 1, limit: 100 })).unwrap();
       
-      if (result.payload) {
-        const miembrosData = result.payload.data;
-        const activosCount = miembrosData.filter(m => m.vigente).length;
+      // ✅ Verificar que result y result.data existen
+      if (result && Array.isArray(result.data)) {
+        const miembrosData = result.data;
+        const activosCount = miembrosData.filter(m => m && m.vigente).length;
         
         setStats({
           totalMiembros: miembrosData.length,
           miembrosActivos: activosCount,
-          documentosTotal: 0, // Implementar cuando tengas documentos
-          proximasTenidas: 0, // Implementar cuando tengas programas
+          documentosTotal: 0, // TODO: Implementar cuando tengas documentos
+          proximasTenidas: 0, // TODO: Implementar cuando tengas programas
+          loading: false,
+        });
+      } else {
+        // Si no hay datos, usar valores por defecto
+        setStats({
+          totalMiembros: 0,
+          miembrosActivos: 0,
+          documentosTotal: 0,
+          proximasTenidas: 0,
           loading: false,
         });
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
-      setStats(prev => ({ ...prev, loading: false }));
+      
+      // ✅ En caso de error, mostrar datos por defecto
+      setStats({
+        totalMiembros: 0,
+        miembrosActivos: 0,
+        documentosTotal: 0,
+        proximasTenidas: 0,
+        loading: false,
+      });
     }
   };
 
@@ -101,7 +119,11 @@ const DashboardScreen = () => {
       <ScrollView
         style={globalStyles.padding}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
@@ -109,10 +131,10 @@ const DashboardScreen = () => {
         <View style={styles.welcomeCard}>
           <Text style={styles.welcomeText}>Bienvenido,</Text>
           <Text style={styles.userName}>
-            {user?.member_full_name || user?.username}
+            {user?.member_full_name || user?.username || 'Usuario'}
           </Text>
           <Text style={styles.userGrado}>
-            Grado: {user?.grado?.toUpperCase()}
+            Grado: {user?.grado?.toUpperCase() || 'N/A'}
           </Text>
           {user?.role && (
             <Text style={styles.userRole}>
@@ -137,7 +159,10 @@ const DashboardScreen = () => {
             'Documentos',
             stats.documentosTotal,
             'Ver todos',
-            () => {}, // navigation.navigate('Documentos') cuando esté implementado
+            () => {
+              // TODO: navigation.navigate('Documentos') cuando esté implementado
+              console.log('Navegando a Documentos - TODO');
+            },
             colors.companero
           )}
           
@@ -146,7 +171,10 @@ const DashboardScreen = () => {
             'Programas',
             stats.proximasTenidas,
             'Próximas tenidas',
-            () => {}, // navigation.navigate('Programas') cuando esté implementado
+            () => {
+              // TODO: navigation.navigate('Programas') cuando esté implementado
+              console.log('Navegando a Programas - TODO');
+            },
             colors.maestro
           )}
           
@@ -155,7 +183,9 @@ const DashboardScreen = () => {
             'Estadísticas',
             '100%',
             'Ver reportes',
-            () => {},
+            () => {
+              console.log('Navegando a Estadísticas - TODO');
+            },
             colors.primary
           )}
         </View>
@@ -178,7 +208,7 @@ const DashboardScreen = () => {
           <TouchableOpacity 
             style={styles.actionCard}
             onPress={() => {
-              // navigation.navigate('Documentos', { screen: 'DocumentoUpload' })
+              console.log('Subir Documento - TODO');
             }}
           >
             <Icon name="upload-file" size={24} color={colors.primary} />
@@ -189,7 +219,7 @@ const DashboardScreen = () => {
           <TouchableOpacity 
             style={styles.actionCard}
             onPress={() => {
-              // navigation.navigate('Programas', { screen: 'ProgramaForm' })
+              console.log('Nueva Tenida - TODO');
             }}
           >
             <Icon name="event" size={24} color={colors.primary} />
@@ -198,35 +228,57 @@ const DashboardScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Miembros recientes */}
-        {miembros.length > 0 && (
+        {/* Miembros recientes - ✅ Con verificación de datos */}
+        {Array.isArray(miembros) && miembros.length > 0 && (
           <View style={styles.recentSection}>
             <Text style={styles.sectionTitle}>Miembros Recientes</Text>
-            {miembros.slice(0, 3).map((miembro) => (
-              <TouchableOpacity
-                key={miembro.id}
-                style={styles.recentItem}
-                onPress={() => navigation.navigate('Miembros', {
-                  screen: 'MiembroDetail',
-                  params: { miembro }
-                })}
-              >
-                <View style={styles.recentAvatar}>
-                  <Text style={styles.recentAvatarText}>
-                    {miembro.nombres?.charAt(0)}{miembro.apellidos?.charAt(0)}
-                  </Text>
-                </View>
-                <View style={styles.recentInfo}>
-                  <Text style={styles.recentName}>
-                    {miembro.nombres} {miembro.apellidos}
-                  </Text>
-                  <Text style={styles.recentGrado}>
-                    {miembro.grado?.toUpperCase()}
-                  </Text>
-                </View>
-                <Icon name="chevron-right" size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-            ))}
+            {miembros.slice(0, 3).map((miembro) => {
+              // ✅ Verificar que miembro existe y tiene propiedades necesarias
+              if (!miembro || !miembro.id) return null;
+              
+              return (
+                <TouchableOpacity
+                  key={miembro.id}
+                  style={styles.recentItem}
+                  onPress={() => navigation.navigate('Miembros', {
+                    screen: 'MiembroDetail',
+                    params: { miembro }
+                  })}
+                >
+                  <View style={styles.recentAvatar}>
+                    <Text style={styles.recentAvatarText}>
+                      {(miembro.nombres || 'N').charAt(0)}
+                      {(miembro.apellidos || 'N').charAt(0)}
+                    </Text>
+                  </View>
+                  <View style={styles.recentInfo}>
+                    <Text style={styles.recentName}>
+                      {miembro.nombres || 'Sin nombre'} {miembro.apellidos || ''}
+                    </Text>
+                    <Text style={styles.recentGrado}>
+                      {(miembro.grado || 'N/A').toUpperCase()}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Mensaje si no hay miembros */}
+        {(!Array.isArray(miembros) || miembros.length === 0) && (
+          <View style={styles.emptySection}>
+            <Icon name="people-outline" size={48} color={colors.textTertiary} />
+            <Text style={styles.emptyText}>
+              No hay miembros cargados
+            </Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={loadDashboardData}
+            >
+              <Text style={styles.retryButtonText}>Reintentar</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -360,6 +412,29 @@ const styles = StyleSheet.create({
   recentGrado: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  emptySection: {
+    alignItems: 'center',
+    padding: 32,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: colors.background,
+    fontWeight: '600',
   },
 });
 

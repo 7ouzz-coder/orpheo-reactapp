@@ -30,7 +30,8 @@ export default function App() {
         } 
         persistor={persistor}
       >
-        <StatusBar style="light" backgroundColor={colors.background} />
+        {/* ✅ StatusBar corregido - sin backgroundColor para evitar warning */}
+        <StatusBar style="light" />
         <AppNavigator />
         <Toast />
       </PersistGate>

@@ -500,7 +500,104 @@ module.exports = {
       }
     });
 
-    // ===== 6. CREAR TODOS LOS ÍNDICES =====
+    // ===== 6. CREAR TABLA NOTIFICACIONES =====
+    await queryInterface.createTable('notificaciones', {
+      id: {
+        type: Sequelize.UUID,
+        defaultValue: Sequelize.UUIDV4,
+        primaryKey: true,
+      },
+      titulo: {
+        type: Sequelize.STRING(255),
+        allowNull: false,
+      },
+      mensaje: {
+        type: Sequelize.TEXT,
+        allowNull: false,
+      },
+      tipo: {
+        type: Sequelize.ENUM('programa', 'documento', 'miembro', 'administrativo', 'sistema', 'plancha', 'asistencia'),
+        allowNull: false,
+      },
+      relacionado_tipo: {
+        type: Sequelize.ENUM('programa', 'documento', 'miembro', 'user', 'asistencia'),
+        allowNull: true,
+      },
+      relacionado_id: {
+        type: Sequelize.UUID,
+        allowNull: true,
+      },
+      leido: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
+      },
+      leido_at: {
+        type: Sequelize.DATE,
+        allowNull: true,
+      },
+      usuario_id: {
+        type: Sequelize.UUID,
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id'
+        },
+        onDelete: 'CASCADE'
+      },
+      grado_destino: {
+        type: Sequelize.ENUM('aprendiz', 'companero', 'maestro', 'todos'),
+        allowNull: true,
+      },
+      remitente_tipo: {
+        type: Sequelize.ENUM('system', 'user', 'admin'),
+        defaultValue: 'system',
+      },
+      remitente_id: {
+        type: Sequelize.UUID,
+        allowNull: true,
+        references: {
+          model: 'users',
+          key: 'id'
+        },
+        onDelete: 'SET NULL'
+      },
+      remitente_nombre: {
+        type: Sequelize.STRING(100),
+        allowNull: true,
+      },
+      prioridad: {
+        type: Sequelize.ENUM('baja', 'normal', 'alta', 'urgente'),
+        defaultValue: 'normal',
+      },
+      expires_at: {
+        type: Sequelize.DATE,
+        allowNull: true,
+      },
+      accion_url: {
+        type: Sequelize.STRING(500),
+        allowNull: true,
+      },
+      accion_texto: {
+        type: Sequelize.STRING(100),
+        allowNull: true,
+      },
+      metadatos_json: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW,
+      }
+    });
+
+    // ===== 7. CREAR TODOS LOS ÍNDICES =====
     
     // Índices de Miembros
     await queryInterface.addIndex('miembros', ['rut'], { unique: true });
@@ -541,19 +638,34 @@ module.exports = {
     await queryInterface.addIndex('asistencias', ['confirmado']);
     await queryInterface.addIndex('asistencias', ['hora_registro']);
 
-    // ===== 7. CONSTRAINTS ÚNICOS =====
+    // Índices de Notificaciones
+    await queryInterface.addIndex('notificaciones', ['usuario_id']);
+    await queryInterface.addIndex('notificaciones', ['leido']);
+    await queryInterface.addIndex('notificaciones', ['tipo']);
+    await queryInterface.addIndex('notificaciones', ['prioridad']);
+    await queryInterface.addIndex('notificaciones', ['created_at']);
+    await queryInterface.addIndex('notificaciones', ['expires_at']);
+    await queryInterface.addIndex('notificaciones', ['relacionado_tipo', 'relacionado_id']);
+
+    // ===== 8. CONSTRAINTS ÚNICOS =====
     await queryInterface.addConstraint('asistencias', {
       fields: ['programa_id', 'miembro_id'],
       type: 'unique',
       name: 'asistencias_programa_miembro_unique'
     });
+
+    console.log('✅ Todas las tablas, índices y constraints creados exitosamente');
   },
 
   async down(queryInterface, Sequelize) {
+    // Eliminar en orden inverso para respetar las foreign keys
+    await queryInterface.dropTable('notificaciones');
     await queryInterface.dropTable('asistencias');
     await queryInterface.dropTable('programas');
     await queryInterface.dropTable('documentos');
     await queryInterface.dropTable('users');
     await queryInterface.dropTable('miembros');
+    
+    console.log('✅ Todas las tablas eliminadas exitosamente');
   }
 };
