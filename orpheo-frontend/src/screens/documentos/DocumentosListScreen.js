@@ -22,6 +22,7 @@ import { globalStyles } from '../../styles/globalStyles';
 import { wp, hp, fontSize, spacing } from '../../utils/dimensions';
 import SearchBar from '../../components/common/SearchBar';
 import DocumentoCard from '../../components/documentos/DocumentoCard';
+import DocumentoFilterModal from '../../components/documentos/DocumentoFilterModal';
 import DocumentoUploadModal from '../../components/documentos/DocumentoUploadModal';
 import LoadingCard from '../../components/common/LoadingCard';
 import { 
