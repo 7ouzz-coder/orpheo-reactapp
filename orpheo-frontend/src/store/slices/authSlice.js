@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
 import * as SecureStore from 'expo-secure-store';
 import authService from '../../services/authService';
 
@@ -84,7 +84,7 @@ const authSlice = createSlice({
     lockUntil: null,
     lockDuration: 0, // en segundos
     
-    // Historial para debug
+    // Historial para debug - ✅ inicializado como array
     attemptHistory: [],
   },
   reducers: {
@@ -124,6 +124,11 @@ const authSlice = createSlice({
         state.isLocked = true;
         state.lockDuration = lockSeconds;
         state.lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
+        
+        // Asegurar que attemptHistory existe
+        if (!state.attemptHistory) {
+          state.attemptHistory = [];
+        }
         
         // Agregar al historial
         state.attemptHistory.push({
@@ -173,6 +178,11 @@ const authSlice = createSlice({
               state.lockDuration = lockSeconds;
               state.lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
               
+              // Asegurar que attemptHistory existe
+              if (!state.attemptHistory) {
+                state.attemptHistory = [];
+              }
+              
               state.attemptHistory.push({
                 timestamp: new Date().toISOString(),
                 attempts: state.loginAttempts,
@@ -218,52 +228,58 @@ export const {
 
 export default authSlice.reducer;
 
-// ✅ Selectores mejorados
+// ✅ Selectores básicos
 export const selectAuth = (state) => state.auth;
 export const selectUser = (state) => state.auth.user;
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
 export const selectAuthLoading = (state) => state.auth.loading;
 export const selectAuthError = (state) => state.auth.error;
 
-// ✅ Selector para verificar si puede intentar login
-export const selectCanLogin = (state) => {
-  const { isLocked, lockUntil } = state.auth;
-  
-  if (!isLocked) return true;
-  if (!lockUntil) return true;
-  
-  const now = new Date();
-  const lockExpires = new Date(lockUntil);
-  
-  return now >= lockExpires;
-};
+// ✅ Selectores memoizados para evitar re-renders innecesarios
+export const selectCanLogin = createSelector(
+  [selectAuth],
+  (auth) => {
+    const { isLocked, lockUntil } = auth;
+    
+    if (!isLocked) return true;
+    if (!lockUntil) return true;
+    
+    const now = new Date();
+    const lockExpires = new Date(lockUntil);
+    
+    return now >= lockExpires;
+  }
+);
 
-// ✅ Selector para tiempo restante de bloqueo
-export const selectRemainingLockTime = (state) => {
-  const { isLocked, lockUntil } = state.auth;
-  
-  if (!isLocked || !lockUntil) return 0;
-  
-  const now = new Date();
-  const lockExpires = new Date(lockUntil);
-  const remaining = Math.max(0, Math.ceil((lockExpires - now) / 1000));
-  
-  return remaining;
-};
+export const selectRemainingLockTime = createSelector(
+  [selectAuth],
+  (auth) => {
+    const { isLocked, lockUntil } = auth;
+    
+    if (!isLocked || !lockUntil) return 0;
+    
+    const now = new Date();
+    const lockExpires = new Date(lockUntil);
+    const remaining = Math.max(0, Math.ceil((lockExpires - now) / 1000));
+    
+    return remaining;
+  }
+);
 
-// ✅ Selector para información de bloqueo
-export const selectLockInfo = (state) => {
-  const { loginAttempts, isLocked, lockDuration, attemptHistory } = state.auth;
-  const remainingTime = selectRemainingLockTime(state);
-  const canLogin = selectCanLogin(state);
-  
-  return {
-    attempts: loginAttempts,
-    isLocked,
-    lockDuration,
-    remainingTime,
-    canLogin,
-    history: attemptHistory,
-    nextLockDuration: calculateLockTime(loginAttempts + (loginAttempts % 3 === 2 ? 1 : 0))
-  };
-};
+// ✅ Selector memoizado para información de bloqueo
+export const selectLockInfo = createSelector(
+  [selectAuth, selectRemainingLockTime, selectCanLogin],
+  (auth, remainingTime, canLogin) => {
+    const { loginAttempts, isLocked, lockDuration, attemptHistory = [] } = auth;
+    
+    return {
+      attempts: loginAttempts,
+      isLocked: isLocked || false,
+      lockDuration: lockDuration || 0,
+      remainingTime,
+      canLogin,
+      history: attemptHistory,
+      nextLockDuration: calculateLockTime(loginAttempts + (loginAttempts % 3 === 2 ? 1 : 0))
+    };
+  }
+);
