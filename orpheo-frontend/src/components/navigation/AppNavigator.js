@@ -10,8 +10,10 @@ import { selectIsAuthenticated, selectAuthLoading, getCurrentUser } from '../../
 import LoginScreen from '../../screens/auth/LoginScreen';
 import DashboardScreen from '../../screens/dashboard/DashboardScreen';
 import MiembrosNavigator from './MiembrosNavigator';
+import ProgramasNavigator from './ProgramasNavigator';
+import DocumentosNavigator from './DocumentosNavigator';
 import PerfilScreen from '../../screens/perfil/PerfilScreen';
-import ConnectionTest from '../debug/ConnectionTest'; // 🔥 Componente temporal
+import ConnectionTest from '../debug/ConnectionTest';
 import { View, ActivityIndicator } from 'react-native';
 
 const Stack = createNativeStackNavigator();
@@ -38,8 +40,11 @@ const MainTabNavigator = () => {
             case 'Programas':
               iconName = 'calendar-today';
               break;
-            case 'ConnectionTest': // 🔥 Tab temporal
+            case 'ConnectionTest':
               iconName = 'bug-report';
+              break;
+            case 'LoginDebug':
+              iconName = 'developer-mode';
               break;
             case 'Perfil':
               iconName = 'person';
@@ -75,17 +80,31 @@ const MainTabNavigator = () => {
         component={MiembrosNavigator}
         options={{ title: 'Miembros', headerShown: false }}
       />
-      {/* 🔥 Tab temporal para testing */}
       <Tab.Screen 
-        name="ConnectionTest" 
-        component={ConnectionTest}
-        options={{ title: 'Test' }}
+        name="Documentos" 
+        component={DocumentosNavigator}
+        options={{ title: 'Documentos', headerShown: false }}
       />
       <Tab.Screen 
-        name="LoginDebug" 
-        component={require('../debug/LoginDebug').default}
-        options={{ title: 'Debug' }}
+        name="Programas" 
+        component={ProgramasNavigator}
+        options={{ title: 'Programas', headerShown: false }}
       />
+      {/* Tabs temporales para testing */}
+      {__DEV__ && (
+        <>
+          <Tab.Screen 
+            name="ConnectionTest" 
+            component={ConnectionTest}
+            options={{ title: 'Test' }}
+          />
+          <Tab.Screen 
+            name="LoginDebug" 
+            component={require('../debug/LoginDebug').default}
+            options={{ title: 'Debug' }}
+          />
+        </>
+      )}
       <Tab.Screen 
         name="Perfil" 
         component={PerfilScreen}
@@ -94,55 +113,3 @@ const MainTabNavigator = () => {
     </Tab.Navigator>
   );
 };
-
-// Stack principal de la aplicación
-const AppNavigator = () => {
-  const dispatch = useDispatch();
-  const isAuthenticated = useSelector(selectIsAuthenticated);
-  const loading = useSelector(selectAuthLoading);
-
-  useEffect(() => {
-    // Verificar si hay token guardado al iniciar la app
-    dispatch(getCurrentUser());
-  }, [dispatch]);
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-  
-  return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: colors.surface,
-          },
-          headerTintColor: colors.primary,
-          headerTitleStyle: {
-            fontWeight: '600',
-          },
-        }}
-      >
-        {!isAuthenticated ? (
-          <Stack.Screen 
-            name="Login" 
-            component={LoginScreen}
-            options={{ headerShown: false }}
-          />
-        ) : (
-          <Stack.Screen 
-            name="Main" 
-            component={MainTabNavigator}
-            options={{ headerShown: false }}
-          />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
-  );
-};
-
-export default AppNavigator;

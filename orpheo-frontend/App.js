@@ -5,9 +5,10 @@ import { PersistGate } from 'redux-persist/integration/react';
 import Toast from 'react-native-toast-message';
 import { View, ActivityIndicator } from 'react-native';
 
-import { store, persistor } from '../orpheo-frontend/src/store/store';
-import AppNavigator from '../orpheo-frontend/src/components/navigation/AppNavigator';
-import { colors } from '../orpheo-frontend/src/styles/colors';
+import { store, persistor } from './src/store/store';
+import AppNavigator from './src/components/navigation/AppNavigator';
+import { colors } from './src/styles/colors';
+import WebSocketProvider from './src/components/providers/WebSocketProvider';
 
 export default function App() {
   const [fontsLoaded, setFontsLoaded] = React.useState(true); // Simplificado por ahora
@@ -30,10 +31,11 @@ export default function App() {
         } 
         persistor={persistor}
       >
-        {/* ✅ StatusBar corregido - sin backgroundColor para evitar warning */}
-        <StatusBar style="light" />
-        <AppNavigator />
-        <Toast />
+        <WebSocketProvider>
+          <StatusBar style="light" />
+          <AppNavigator />
+          <Toast />
+        </WebSocketProvider>
       </PersistGate>
     </Provider>
   );

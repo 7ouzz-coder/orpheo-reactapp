@@ -8,6 +8,7 @@ import uiSlice from './slices/uiSlice';
 import miembrosSlice from './slices/miembrosSlice';
 import documentosSlice from './slices/documentosSlice';
 import programasSlice from './slices/programasSlice';
+// import notificacionesSlice from './slices/notificacionesSlice'; // TODO: crear este slice
 
 const persistConfig = {
   key: 'root',
@@ -21,6 +22,7 @@ const rootReducer = combineReducers({
   miembros: miembrosSlice,
   documentos: documentosSlice,
   programas: programasSlice,
+  // notificaciones: notificacionesSlice, // TODO: agregar cuando esté creado
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
