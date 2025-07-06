@@ -25,10 +25,14 @@ export const colors = {
   documentRevision: '#2196F3',
   documentArchived: '#666666',
   
-  // Grados masónicos
-  aprendiz: '#81C784',         // Verde claro
-  companero: '#64B5F6',        // Azul claro
-  maestro: '#BA68C8',          // Púrpura claro
+  aprendiz: '#4CAF50',    // Verde - Crecimiento
+  companero: '#2196F3',   // Azul - Conocimiento  
+  maestro: '#9C27B0',     // Púrpura - Sabiduría
+  
+  // Estados de usuario
+  admin: '#F44336',       // Rojo - Administrador
+  superadmin: '#FF5722',  // Naranja - Super Admin
+  general: '#607D8B',     // Gris - Usuario general
   
   // Utilidad
   transparent: 'transparent',

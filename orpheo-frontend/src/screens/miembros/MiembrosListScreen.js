@@ -8,6 +8,8 @@ import {
   RefreshControl,
   Alert,
   SafeAreaView,
+  StatusBar,
+  Animated,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -16,6 +18,7 @@ import Toast from 'react-native-toast-message';
 
 import { colors } from '../../styles/colors';
 import { globalStyles } from '../../styles/globalStyles';
+import { wp, hp, fontSize, spacing, deviceInfo } from '../../utils/dimensions';
 import SearchBar from '../../components/common/SearchBar';
 import MiembroCard from '../../components/miembros/MiembroCard';
 import FilterModal from '../../components/miembros/FilterModal';
@@ -44,9 +47,16 @@ const MiembrosListScreen = () => {
     vigente: null,
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [scrollY] = useState(new Animated.Value(0));
   
-  // Debounce para búsqueda
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
+
+  // Stats animados
+  const [stats, setStats] = useState({
+    total: 0,
+    activos: 0,
+    porGrado: { aprendiz: 0, companero: 0, maestro: 0 }
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -71,6 +81,23 @@ const MiembrosListScreen = () => {
       dispatch(clearError());
     }
   }, [error, dispatch]);
+
+  // Calcular estadísticas
+  useEffect(() => {
+    if (Array.isArray(miembros)) {
+      const total = miembros.length;
+      const activos = miembros.filter(m => m && m.vigente).length;
+      
+      const porGrado = miembros.reduce((acc, miembro) => {
+        if (miembro && miembro.grado) {
+          acc[miembro.grado] = (acc[miembro.grado] || 0) + 1;
+        }
+        return acc;
+      }, { aprendiz: 0, companero: 0, maestro: 0 });
+
+      setStats({ total, activos, porGrado });
+    }
+  }, [miembros]);
 
   const loadMiembros = () => {
     const params = {
@@ -102,10 +129,12 @@ const MiembrosListScreen = () => {
         {
           text: 'Ver detalle',
           onPress: () => handleMiembroPress(miembro),
+          style: 'default'
         },
         {
           text: 'Editar',
           onPress: () => navigation.navigate('MiembroForm', { miembro }),
+          style: 'default'
         },
         {
           text: 'Cancelar',
@@ -120,69 +149,157 @@ const MiembrosListScreen = () => {
     setShowFilter(false);
   };
 
-  const renderMiembro = ({ item }) => (
-    <MiembroCard
-      miembro={item}
-      onPress={() => handleMiembroPress(item)}
-      onLongPress={() => handleMiembroLongPress(item)}
-    />
-  );
+  const clearFilters = () => {
+    setFilters({ grado: null, vigente: null });
+    setSearchQuery('');
+  };
+
+  const hasActiveFilters = () => {
+    return filters.grado || filters.vigente !== null || searchQuery.length > 0;
+  };
+
+  const renderHeader = () => {
+    const headerOpacity = scrollY.interpolate({
+      inputRange: [0, 50],
+      outputRange: [1, 0.8],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+        {/* Estadísticas */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.success }]}>{stats.activos}</Text>
+            <Text style={styles.statLabel}>Activos</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.aprendiz }]}>{stats.porGrado.aprendiz}</Text>
+            <Text style={styles.statLabel}>Aprendices</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.companero }]}>{stats.porGrado.companero}</Text>
+            <Text style={styles.statLabel}>Compañeros</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.maestro }]}>{stats.porGrado.maestro}</Text>
+            <Text style={styles.statLabel}>Maestros</Text>
+          </View>
+        </View>
+
+        {/* Barra de búsqueda y controles */}
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Buscar miembros..."
+        />
+        
+        <View style={styles.controls}>
+          <TouchableOpacity
+            style={[styles.filterButton, hasActiveFilters() && styles.filterButtonActive]}
+            onPress={() => setShowFilter(true)}
+            activeOpacity={0.8}
+          >
+            <Icon name="tune" size={wp(5)} color={hasActiveFilters() ? colors.white : colors.primary} />
+            <Text style={[styles.filterText, hasActiveFilters() && styles.filterTextActive]}>
+              Filtros
+            </Text>
+            {hasActiveFilters() && <View style={styles.filterDot} />}
+          </TouchableOpacity>
+          
+          {hasActiveFilters() && (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={clearFilters}
+              activeOpacity={0.8}
+            >
+              <Icon name="clear" size={wp(4)} color={colors.error} />
+              <Text style={styles.clearText}>Limpiar</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => navigation.navigate('MiembroForm')}
+            activeOpacity={0.8}
+          >
+            <Icon name="add" size={wp(5)} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    );
+  };
+
+  const renderMiembro = ({ item, index }) => {
+    const inputRange = [-1, 0, (index + 1) * 100, (index + 2) * 100];
+    const scale = scrollY.interpolate({
+      inputRange,
+      outputRange: [1, 1, 1, 0.8],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <MiembroCard
+          miembro={item}
+          onPress={() => handleMiembroPress(item)}
+          onLongPress={() => handleMiembroLongPress(item)}
+        />
+      </Animated.View>
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Icon name="people-outline" size={64} color={colors.textTertiary} />
-      <Text style={styles.emptyTitle}>No se encontraron miembros</Text>
+      <Icon 
+        name={searchQuery ? "search-off" : "people-outline"} 
+        size={wp(20)} 
+        color={colors.textTertiary} 
+      />
+      <Text style={styles.emptyTitle}>
+        {searchQuery ? 'Sin resultados' : 'No hay miembros'}
+      </Text>
       <Text style={styles.emptySubtitle}>
-        {searchQuery ? 'Intenta con otros términos de búsqueda' : 'Agrega el primer miembro'}
+        {searchQuery 
+          ? `No se encontraron miembros que coincidan con "${searchQuery}"` 
+          : 'Agrega el primer miembro de tu logia'
+        }
       </Text>
       {!searchQuery && (
         <TouchableOpacity
           style={styles.emptyButton}
           onPress={() => navigation.navigate('MiembroForm')}
+          activeOpacity={0.8}
         >
-          <Text style={styles.emptyButtonText}>Agregar Miembro</Text>
+          <Icon name="add" size={wp(5)} color={colors.white} />
+          <Text style={styles.emptyButtonText}>Agregar Primer Miembro</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <SearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Buscar miembros..."
-      />
-      
-      <View style={styles.headerActions}>
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={() => setShowFilter(true)}
-        >
-          <Icon name="filter-list" size={20} color={colors.primary} />
-          <Text style={styles.filterText}>Filtros</Text>
-          {(filters.grado || filters.vigente !== null) && (
-            <View style={styles.filterDot} />
-          )}
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('MiembroForm')}
-        >
-          <Icon name="add" size={20} color={colors.background} />
-        </TouchableOpacity>
+  const renderFooter = () => {
+    if (!loading) return null;
+    
+    return (
+      <View style={styles.footer}>
+        <LoadingCard height={hp(10)} />
       </View>
-    </View>
-  );
+    );
+  };
 
   if (loading && miembros.length === 0) {
     return (
       <SafeAreaView style={globalStyles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
         {renderHeader()}
-        <View style={globalStyles.padding}>
-          {[...Array(5)].map((_, index) => (
-            <LoadingCard key={index} height={80} />
+        <View style={styles.loadingContainer}>
+          {[...Array(8)].map((_, index) => (
+            <LoadingCard key={index} height={hp(12)} />
           ))}
         </View>
       </SafeAreaView>
@@ -191,21 +308,39 @@ const MiembrosListScreen = () => {
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      <FlatList
-        ListHeaderComponent={renderHeader}
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      
+      <Animated.FlatList
         data={miembros}
         renderItem={renderMiembro}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => ({
+          length: hp(12) + spacing.sm,
+          offset: (hp(12) + spacing.sm) * index,
+          index,
+        })}
       />
       
       <FilterModal
@@ -221,81 +356,156 @@ const MiembrosListScreen = () => {
 const styles = StyleSheet.create({
   header: {
     backgroundColor: colors.background,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
-  headerActions: {
+  
+  // Estadísticas
+  statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: wp(3),
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    justifyContent: 'space-around',
+    elevation: 2,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  statItem: {
     alignItems: 'center',
-    marginTop: 12,
+  },
+  statNumber: {
+    fontSize: fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  
+  // Controles
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
   },
   filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: wp(6),
+    marginRight: spacing.sm,
     position: 'relative',
+    elevation: 1,
+  },
+  filterButtonActive: {
+    backgroundColor: colors.primary,
   },
   filterText: {
     color: colors.primary,
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: spacing.sm,
+    fontSize: fontSize.sm,
     fontWeight: '500',
+  },
+  filterTextActive: {
+    color: colors.white,
   },
   filterDot: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: spacing.xs,
+    right: spacing.xs,
+    width: wp(2),
+    height: wp(2),
+    borderRadius: wp(1),
     backgroundColor: colors.warning,
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: wp(4),
+    marginRight: spacing.sm,
+  },
+  clearText: {
+    color: colors.error,
+    marginLeft: spacing.xs,
+    fontSize: fontSize.xs,
+    fontWeight: '500',
   },
   addButton: {
     backgroundColor: colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 'auto',
+    elevation: 3,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
+  
+  // Lista
   listContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xl,
+  },
+  
+  // Estados
+  loadingContainer: {
+    padding: spacing.md,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingTop: hp(10),
+    paddingHorizontal: spacing.xl,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
     color: colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 14,
+    fontSize: fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
+    lineHeight: fontSize.md * 1.4,
   },
   emptyButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: wp(2),
+    elevation: 2,
   },
   emptyButtonText: {
-    color: colors.background,
-    fontSize: 16,
+    color: colors.white,
+    fontSize: fontSize.md,
     fontWeight: '600',
+    marginLeft: spacing.sm,
+  },
+  footer: {
+    padding: spacing.md,
   },
 });
 

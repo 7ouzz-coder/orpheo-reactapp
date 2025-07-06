@@ -7,22 +7,26 @@ import {
   StyleSheet,
   RefreshControl,
   SafeAreaView,
+  StatusBar,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { colors } from '../../styles/colors';
-import { globalStyles } from '../../styles/globalStyles';
 import { selectUser } from '../../store/slices/authSlice';
 import { getMiembros, selectMiembros } from '../../store/slices/miembrosSlice';
 import LoadingCard from '../../components/common/LoadingCard';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const DashboardScreen = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
-  const miembros = useSelector(selectMiembros) || []; // ✅ Fallback para evitar undefined
+  const miembros = useSelector(selectMiembros) || [];
   
   const [refreshing, setRefreshing] = React.useState(false);
   const [stats, setStats] = React.useState({
@@ -41,10 +45,8 @@ const DashboardScreen = () => {
     setStats(prev => ({ ...prev, loading: true }));
     
     try {
-      // ✅ Cargar miembros con manejo de errores robusto
       const result = await dispatch(getMiembros({ page: 1, limit: 100 })).unwrap();
       
-      // ✅ Verificar que result y result.data existen
       if (result && Array.isArray(result.data)) {
         const miembrosData = result.data;
         const activosCount = miembrosData.filter(m => m && m.vigente).length;
@@ -52,12 +54,11 @@ const DashboardScreen = () => {
         setStats({
           totalMiembros: miembrosData.length,
           miembrosActivos: activosCount,
-          documentosTotal: 0, // TODO: Implementar cuando tengas documentos
-          proximasTenidas: 0, // TODO: Implementar cuando tengas programas
+          documentosTotal: 12, // Mock data
+          proximasTenidas: 3, // Mock data
           loading: false,
         });
       } else {
-        // Si no hay datos, usar valores por defecto
         setStats({
           totalMiembros: 0,
           miembrosActivos: 0,
@@ -68,8 +69,6 @@ const DashboardScreen = () => {
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
-      
-      // ✅ En caso de error, mostrar datos por defecto
       setStats({
         totalMiembros: 0,
         miembrosActivos: 0,
@@ -85,8 +84,23 @@ const DashboardScreen = () => {
     loadDashboardData().finally(() => setRefreshing(false));
   }, []);
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Buenos días';
+    if (hour < 18) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
+
+  const getUserDisplayName = () => {
+    return user?.member_full_name || user?.username || 'Usuario';
+  };
+
   const renderStatsCard = (icon, title, value, subtitle, onPress, color = colors.primary) => (
-    <TouchableOpacity style={styles.statsCard} onPress={onPress}>
+    <TouchableOpacity 
+      style={styles.statsCard} 
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
       <View style={[styles.statsIcon, { backgroundColor: color }]}>
         <Icon name={icon} size={24} color={colors.white} />
       </View>
@@ -98,16 +112,65 @@ const DashboardScreen = () => {
     </TouchableOpacity>
   );
 
+  const renderActionCard = (icon, title, subtitle, onPress, iconColor = colors.primary) => (
+    <TouchableOpacity 
+      style={styles.actionCard}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View style={[styles.actionIcon, { backgroundColor: iconColor + '20' }]}>
+        <Icon name={icon} size={20} color={iconColor} />
+      </View>
+      <View style={styles.actionContent}>
+        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+      </View>
+      <Icon name="chevron-right" size={16} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+
+  const renderMiembroItem = (miembro) => {
+    if (!miembro || !miembro.id) return null;
+    
+    const initials = `${(miembro.nombres || 'N').charAt(0)}${(miembro.apellidos || 'N').charAt(0)}`;
+    const gradoColor = colors[miembro.grado] || colors.primary;
+    
+    return (
+      <TouchableOpacity
+        key={miembro.id}
+        style={styles.miembroItem}
+        onPress={() => navigation.navigate('Miembros', {
+          screen: 'MiembroDetail',
+          params: { miembro }
+        })}
+        activeOpacity={0.8}
+      >
+        <View style={[styles.miembroAvatar, { backgroundColor: gradoColor }]}>
+          <Text style={styles.miembroInitials}>{initials}</Text>
+        </View>
+        <View style={styles.miembroInfo}>
+          <Text style={styles.miembroName} numberOfLines={1}>
+            {miembro.nombres || 'Sin nombre'} {miembro.apellidos || ''}
+          </Text>
+          <Text style={styles.miembroGrado}>
+            {(miembro.grado || 'N/A').toUpperCase()}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   if (stats.loading) {
     return (
-      <SafeAreaView style={globalStyles.container}>
-        <ScrollView style={globalStyles.padding}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.loadingContainer}>
           <LoadingCard height={120} />
           <View style={styles.statsGrid}>
-            <LoadingCard height={100} width="48%" />
-            <LoadingCard height={100} width="48%" />
-            <LoadingCard height={100} width="48%" />
-            <LoadingCard height={100} width="48%" />
+            <LoadingCard height={80} width={(SCREEN_WIDTH - 48) / 2} />
+            <LoadingCard height={80} width={(SCREEN_WIDTH - 48) / 2} />
+            <LoadingCard height={80} width={(SCREEN_WIDTH - 48) / 2} />
+            <LoadingCard height={80} width={(SCREEN_WIDTH - 48) / 2} />
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -115,169 +178,144 @@ const DashboardScreen = () => {
   }
 
   return (
-    <SafeAreaView style={globalStyles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       <ScrollView
-        style={globalStyles.padding}
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
             tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Saludo personalizado */}
+        {/* Header de Bienvenida */}
         <View style={styles.welcomeCard}>
-          <Text style={styles.welcomeText}>Bienvenido,</Text>
-          <Text style={styles.userName}>
-            {user?.member_full_name || user?.username || 'Usuario'}
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.userName} numberOfLines={2}>
+            {getUserDisplayName()}
           </Text>
-          <Text style={styles.userGrado}>
-            Grado: {user?.grado?.toUpperCase() || 'N/A'}
-          </Text>
-          {user?.role && (
-            <Text style={styles.userRole}>
-              Rol: {user.role.toUpperCase()}
-            </Text>
+          <View style={styles.userBadges}>
+            <View style={[styles.gradoBadge, { backgroundColor: colors[user?.grado] || colors.primary }]}>
+              <Text style={styles.badgeText}>
+                {user?.grado?.toUpperCase() || 'N/A'}
+              </Text>
+            </View>
+            {user?.cargo && (
+              <View style={styles.cargoBadge}>
+                <Text style={styles.cargoText}>
+                  {user.cargo.replace('_', ' ').toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Grid de Estadísticas */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>📊 Resumen</Text>
+          <View style={styles.statsGrid}>
+            {renderStatsCard(
+              'people',
+              'Miembros',
+              stats.totalMiembros,
+              `${stats.miembrosActivos} activos`,
+              () => navigation.navigate('Miembros'),
+              colors.aprendiz
+            )}
+            
+            {renderStatsCard(
+              'description',
+              'Documentos',
+              stats.documentosTotal,
+              'Ver biblioteca',
+              () => console.log('Navegando a Documentos'),
+              colors.companero
+            )}
+            
+            {renderStatsCard(
+              'calendar-today',
+              'Programas',
+              stats.proximasTenidas,
+              'Próximas tenidas',
+              () => console.log('Navegando a Programas'),
+              colors.maestro
+            )}
+            
+            {renderStatsCard(
+              'insights',
+              'Reportes',
+              '100%',
+              'Ver estadísticas',
+              () => console.log('Navegando a Reportes'),
+              colors.primary
+            )}
+          </View>
+        </View>
+
+        {/* Acciones Rápidas */}
+        <View style={styles.actionsSection}>
+          <Text style={styles.sectionTitle}>⚡ Acciones Rápidas</Text>
+          
+          {renderActionCard(
+            'person-add',
+            'Nuevo Miembro',
+            'Registrar hermano en la logia',
+            () => navigation.navigate('Miembros', { screen: 'MiembroForm' }),
+            colors.success
+          )}
+          
+          {renderActionCard(
+            'upload-file',
+            'Subir Documento',
+            'Compartir plancha o archivo',
+            () => console.log('Subir Documento'),
+            colors.info
+          )}
+          
+          {renderActionCard(
+            'event',
+            'Nueva Tenida',
+            'Programar reunión masónica',
+            () => console.log('Nueva Tenida'),
+            colors.warning
           )}
         </View>
 
-        {/* Estadísticas */}
-        <View style={styles.statsGrid}>
-          {renderStatsCard(
-            'people',
-            'Miembros',
-            stats.totalMiembros,
-            `${stats.miembrosActivos} activos`,
-            () => navigation.navigate('Miembros'),
-            colors.aprendiz
-          )}
-          
-          {renderStatsCard(
-            'description',
-            'Documentos',
-            stats.documentosTotal,
-            'Ver todos',
-            () => {
-              // TODO: navigation.navigate('Documentos') cuando esté implementado
-              console.log('Navegando a Documentos - TODO');
-            },
-            colors.companero
-          )}
-          
-          {renderStatsCard(
-            'calendar-today',
-            'Programas',
-            stats.proximasTenidas,
-            'Próximas tenidas',
-            () => {
-              // TODO: navigation.navigate('Programas') cuando esté implementado
-              console.log('Navegando a Programas - TODO');
-            },
-            colors.maestro
-          )}
-          
-          {renderStatsCard(
-            'insights',
-            'Estadísticas',
-            '100%',
-            'Ver reportes',
-            () => {
-              console.log('Navegando a Estadísticas - TODO');
-            },
-            colors.primary
-          )}
-        </View>
-
-        {/* Accesos rápidos */}
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-          
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => navigation.navigate('Miembros', { 
-              screen: 'MiembroForm'
-            })}
-          >
-            <Icon name="person-add" size={24} color={colors.primary} />
-            <Text style={styles.actionText}>Nuevo Miembro</Text>
-            <Icon name="chevron-right" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => {
-              console.log('Subir Documento - TODO');
-            }}
-          >
-            <Icon name="upload-file" size={24} color={colors.primary} />
-            <Text style={styles.actionText}>Subir Documento</Text>
-            <Icon name="chevron-right" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => {
-              console.log('Nueva Tenida - TODO');
-            }}
-          >
-            <Icon name="event" size={24} color={colors.primary} />
-            <Text style={styles.actionText}>Nueva Tenida</Text>
-            <Icon name="chevron-right" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Miembros recientes - ✅ Con verificación de datos */}
+        {/* Miembros Recientes */}
         {Array.isArray(miembros) && miembros.length > 0 && (
-          <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>Miembros Recientes</Text>
-            {miembros.slice(0, 3).map((miembro) => {
-              // ✅ Verificar que miembro existe y tiene propiedades necesarias
-              if (!miembro || !miembro.id) return null;
-              
-              return (
-                <TouchableOpacity
-                  key={miembro.id}
-                  style={styles.recentItem}
-                  onPress={() => navigation.navigate('Miembros', {
-                    screen: 'MiembroDetail',
-                    params: { miembro }
-                  })}
-                >
-                  <View style={styles.recentAvatar}>
-                    <Text style={styles.recentAvatarText}>
-                      {(miembro.nombres || 'N').charAt(0)}
-                      {(miembro.apellidos || 'N').charAt(0)}
-                    </Text>
-                  </View>
-                  <View style={styles.recentInfo}>
-                    <Text style={styles.recentName}>
-                      {miembro.nombres || 'Sin nombre'} {miembro.apellidos || ''}
-                    </Text>
-                    <Text style={styles.recentGrado}>
-                      {(miembro.grado || 'N/A').toUpperCase()}
-                    </Text>
-                  </View>
-                  <Icon name="chevron-right" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.miembrosSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>👥 Miembros Recientes</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Miembros')}>
+                <Text style={styles.sectionLink}>Ver todos</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.miembrosList}>
+              {miembros.slice(0, 4).map(renderMiembroItem)}
+            </View>
           </View>
         )}
 
-        {/* Mensaje si no hay miembros */}
+        {/* Estado Vacío */}
         {(!Array.isArray(miembros) || miembros.length === 0) && (
-          <View style={styles.emptySection}>
-            <Icon name="people-outline" size={48} color={colors.textTertiary} />
+          <View style={styles.emptyState}>
+            <Icon name="people-outline" size={64} color={colors.textTertiary} />
+            <Text style={styles.emptyTitle}>¡Bienvenido a Orpheo!</Text>
             <Text style={styles.emptyText}>
-              No hay miembros cargados
+              Comienza agregando el primer miembro de tu logia
             </Text>
             <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={loadDashboardData}
+              style={styles.emptyButton}
+              onPress={() => navigation.navigate('Miembros', { screen: 'MiembroForm' })}
             >
-              <Text style={styles.retryButtonText}>Reintentar</Text>
+              <Icon name="add" size={20} color={colors.white} />
+              <Text style={styles.emptyButtonText}>Agregar Primer Miembro</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -287,154 +325,261 @@ const DashboardScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  welcomeCard: {
-    ...globalStyles.card,
-    marginBottom: 24,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  welcomeText: {
-    fontSize: 16,
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingBottom: 20,
+  },
+  loadingContainer: {
+    padding: 16,
+  },
+  
+  // Welcome Card
+  welcomeCard: {
+    backgroundColor: colors.surface,
+    margin: 16,
+    marginBottom: 8,
+    padding: 20,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  greeting: {
+    fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 4,
   },
   userName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.primary,
+    marginBottom: 12,
+  },
+  userBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  gradoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 8,
     marginBottom: 4,
   },
-  userGrado: {
-    fontSize: 14,
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  cargoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: colors.card,
+    marginBottom: 4,
+  },
+  cargoText: {
+    fontSize: 10,
+    fontWeight: '500',
     color: colors.textSecondary,
   },
-  userRole: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    marginTop: 2,
+  
+  // Sections
+  statsSection: {
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
+  actionsSection: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  miembrosSection: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionLink: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  
+  // Stats Grid
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 24,
   },
   statsCard: {
-    width: '48%',
+    width: (SCREEN_WIDTH - 40) / 2,
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    elevation: 1,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   statsIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginBottom: 8,
   },
   statsContent: {
     flex: 1,
   },
   statsValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.textPrimary,
     marginBottom: 2,
   },
   statsTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: 2,
   },
   statsSubtitle: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textSecondary,
   },
-  quickActions: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 16,
-  },
+  
+  // Action Cards
   actionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionText: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.textPrimary,
-    marginLeft: 12,
-  },
-  recentSection: {
-    marginBottom: 24,
-  },
-  recentItem: {
     backgroundColor: colors.surface,
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    elevation: 1,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  recentAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
+  actionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  recentAvatarText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.background,
-  },
-  recentInfo: {
+  actionContent: {
     flex: 1,
   },
-  recentName: {
+  actionTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
+    marginBottom: 2,
   },
-  recentGrado: {
+  actionSubtitle: {
     fontSize: 12,
     color: colors.textSecondary,
   },
-  emptySection: {
+  
+  // Miembros List
+  miembrosList: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  miembroItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 32,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.card,
+  },
+  miembroAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  miembroInitials: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: colors.white,
+  },
+  miembroInfo: {
+    flex: 1,
+  },
+  miembroName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  miembroGrado: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  
+  // Empty State
+  emptyState: {
+    alignItems: 'center',
+    padding: 40,
+    margin: 16,
     backgroundColor: colors.surface,
     borderRadius: 12,
-    marginBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.textSecondary,
-    marginTop: 16,
-    marginBottom: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
   },
-  retryButton: {
+  emptyButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 6,
   },
-  retryButtonText: {
-    color: colors.background,
+  emptyButtonText: {
+    color: colors.white,
+    fontSize: 14,
     fontWeight: '600',
+    marginLeft: 8,
   },
 });
 
