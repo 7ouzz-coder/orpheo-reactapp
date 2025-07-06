@@ -4,7 +4,7 @@ import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import Toast from 'react-native-toast-message';
 import { View, ActivityIndicator } from 'react-native';
-
+import 'react-native-get-random-values';
 import { store, persistor } from './src/store/store';
 import AppNavigator from './src/components/navigation/AppNavigator';
 import { colors } from './src/styles/colors';

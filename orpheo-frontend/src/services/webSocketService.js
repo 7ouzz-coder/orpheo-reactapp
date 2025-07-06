@@ -46,6 +46,14 @@ class WebSocketService {
     }
   }
 
+  // Unirse a sala personal del usuario
+  joinUserRoom(userId) {
+    if (this.socket && this.isConnected) {
+      console.log(`🏠 Uniéndose a sala del usuario: ${userId}`);
+      this.socket.emit('join', userId);
+    }
+  }
+
   // Configurar listeners de eventos
   setupEventListeners() {
     if (!this.socket) return;
@@ -106,169 +114,65 @@ class WebSocketService {
   setupAppEventListeners() {
     if (!this.socket) return;
 
-    // Nuevo miembro
-    this.socket.on('new_member', (data) => {
-      console.log('👤 Nuevo miembro:', data);
-      Toast.show({
-        type: 'info',
-        text1: '👤 Nuevo Miembro',
-        text2: `${data.data.nombre} se ha unido (${data.data.grado})`,
-        position: 'top',
-        visibilityTime: 4000,
-      });
-    });
-
-    // Nuevo documento
-    this.socket.on('new_document', (data) => {
-      console.log('📄 Nuevo documento:', data);
-      Toast.show({
-        type: 'info',
-        text1: '📄 Nuevo Documento',
-        text2: `${data.data.nombre} disponible`,
-        position: 'top',
-        visibilityTime: 4000,
-      });
-    });
-
-    // Nuevo programa
-    this.socket.on('new_program', (data) => {
-      console.log('📅 Nuevo programa:', data);
-      Toast.show({
-        type: 'info',
-        text1: '📅 Nuevo Programa',
-        text2: `${data.data.tema} programado`,
-        position: 'top',
-        visibilityTime: 4000,
-      });
-    });
-
-    // Asistencia actualizada
-    this.socket.on('attendance_updated', (data) => {
-      console.log('✅ Asistencia actualizada:', data);
+    // Listener para actualizaciones de asistencia
+    this.socket.on('asistencia_actualizada', (data) => {
+      console.log('📝 Asistencia actualizada:', data);
       
-      // Actualizar estado en Redux
-      store.dispatch(updateAsistenciaInState({
-        programaId: data.programaId,
-        asistenciaData: data.data
-      }));
-
+      // Actualizar el store de Redux
+      store.dispatch(updateAsistenciaInState(data));
+      
       Toast.show({
-        type: 'success',
-        text1: '✅ Asistencia',
-        text2: `${data.data.nombreMiembro} - ${data.data.asistio ? 'Presente' : 'Ausente'}`,
+        type: 'info',
+        text1: '📝 Asistencia actualizada',
+        text2: `${data.miembro} marcó asistencia`,
         position: 'top',
         visibilityTime: 3000,
       });
     });
 
-    // Plancha moderada
-    this.socket.on('plancha_moderated', (data) => {
-      console.log('📋 Plancha moderada:', data);
-      const estado = data.data.estado === 'aprobada' ? '✅ Aprobada' : '❌ Rechazada';
-      Toast.show({
-        type: data.data.estado === 'aprobada' ? 'success' : 'error',
-        text1: '📋 Plancha',
-        text2: `${data.data.nombre} - ${estado}`,
-        position: 'top',
-        visibilityTime: 5000,
-      });
-    });
-
-    // Recordatorio de programa
-    this.socket.on('program_reminder', (data) => {
-      console.log('⏰ Recordatorio:', data);
-      Toast.show({
-        type: 'info',
-        text1: '⏰ Recordatorio',
-        text2: `${data.data.tema} - ${data.data.tiempo}`,
-        position: 'top',
-        visibilityTime: 6000,
-      });
-    });
-
-    // Notificación general
-    this.socket.on('notification', (data) => {
-      console.log('🔔 Notificación:', data);
+    // Listener para nuevos programas
+    this.socket.on('nuevo_programa', (data) => {
+      console.log('🆕 Nuevo programa creado:', data);
       
-      const getToastType = (prioridad) => {
-        switch (prioridad) {
-          case 'urgente': return 'error';
-          case 'alta': return 'error';
-          case 'normal': return 'info';
-          case 'baja': return 'info';
-          default: return 'info';
-        }
-      };
-
       Toast.show({
-        type: getToastType(data.prioridad),
-        text1: `🔔 ${data.titulo}`,
+        type: 'success',
+        text1: '🆕 Nuevo programa',
+        text2: data.titulo,
+        position: 'top',
+        visibilityTime: 3000,
+      });
+    });
+
+    // Listener para notificaciones generales
+    this.socket.on('notificacion', (data) => {
+      console.log('🔔 Nueva notificación:', data);
+      
+      Toast.show({
+        type: data.tipo || 'info',
+        text1: data.titulo,
         text2: data.mensaje,
         position: 'top',
-        visibilityTime: data.prioridad === 'urgente' ? 8000 : 5000,
+        visibilityTime: 4000,
       });
     });
 
-    // Eventos del sistema
-    this.socket.on('system_maintenance', (data) => {
-      console.log('🔧 Mantenimiento del sistema:', data);
-      Toast.show({
-        type: 'warning',
-        text1: '🔧 Mantenimiento',
-        text2: data.mensaje,
-        position: 'top',
-        visibilityTime: 8000,
-      });
+    // Listener para respuesta de ping
+    this.socket.on('pong', (data) => {
+      console.log('🏓 Pong recibido:', data);
     });
-
-    this.socket.on('user_session_expired', (data) => {
-      console.log('⏰ Sesión expirada:', data);
-      Toast.show({
-        type: 'error',
-        text1: '⏰ Sesión Expirada',
-        text2: 'Por favor, inicia sesión nuevamente',
-        position: 'top',
-        visibilityTime: 6000,
-      });
-    });
-  }
-
-  // Unirse a la sala del usuario
-  joinUserRoom(userId) {
-    if (this.socket && this.isConnected) {
-      console.log('🏠 Uniéndose a sala de usuario:', userId);
-      this.socket.emit('join', userId);
-    }
-  }
-
-  // Salir de la sala del usuario
-  leaveUserRoom(userId) {
-    if (this.socket && this.isConnected) {
-      console.log('🚪 Saliendo de sala de usuario:', userId);
-      this.socket.emit('leave', userId);
-    }
   }
 
   // Manejar errores de conexión
   handleConnectionError(error) {
-    this.isConnected = false;
     this.reconnectAttempts++;
-
-    console.error(`❌ Error WebSocket (intento ${this.reconnectAttempts}):`, error.message);
-
-    if (this.reconnectAttempts <= this.maxReconnectAttempts) {
-      Toast.show({
-        type: 'warning',
-        text1: '🔄 Reconectando...',
-        text2: `Intento ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
-        position: 'top',
-        visibilityTime: 3000,
-      });
-    } else {
+    
+    console.error(`❌ Error de conexión (intento ${this.reconnectAttempts}):`, error);
+    
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       Toast.show({
         type: 'error',
-        text1: '❌ Sin conexión',
-        text2: 'No se puede conectar al servidor',
+        text1: '❌ Error de conexión',
+        text2: 'No se pudo conectar al servidor',
         position: 'top',
         visibilityTime: 5000,
       });
@@ -277,9 +181,7 @@ class WebSocketService {
 
   // Manejar desconexión
   handleDisconnection(reason) {
-    this.isConnected = false;
-
-    // Razones que no requieren reconexión automática
+    // Algunas desconexiones no requieren reconexión automática
     const noReconnectReasons = ['io server disconnect', 'io client disconnect'];
     
     if (!noReconnectReasons.includes(reason)) {
@@ -428,42 +330,6 @@ class WebSocketService {
     };
   }
 }
-// Funciones de utilidad para usar en componentes
-export const useWebSocket = () => {
-  return {
-    connect: webSocketService.connect.bind(webSocketService),
-    disconnect: webSocketService.disconnect.bind(webSocketService),
-    emit: webSocketService.emit.bind(webSocketService),
-    on: webSocketService.on.bind(webSocketService),
-    off: webSocketService.off.bind(webSocketService),
-    getStatus: webSocketService.getConnectionStatus.bind(webSocketService),
-    reconnect: webSocketService.reconnect.bind(webSocketService),
-    isConnected: () => webSocketService.isConnected,
-    
-    // Métodos específicos de la app
-    confirmarAsistencia: webSocketService.confirmarAsistencia.bind(webSocketService),
-    marcarAsistencia: webSocketService.marcarAsistencia.bind(webSocketService),
-    sendTyping: webSocketService.sendTyping.bind(webSocketService),
-    
-    // Debug
-    getDebugInfo: webSocketService.getDebugInfo.bind(webSocketService)
-  };
-};
-
-// Hook para React components
-export const useWebSocketEffect = (userId) => {
-  React.useEffect(() => {
-    if (userId) {
-      webSocketService.connect(userId);
-    }
-    
-    return () => {
-      webSocketService.disconnect();
-    };
-  }, [userId]);
-
-  return useWebSocket();
-};
 
 // Crear instancia singleton
 const webSocketService = new WebSocketService();

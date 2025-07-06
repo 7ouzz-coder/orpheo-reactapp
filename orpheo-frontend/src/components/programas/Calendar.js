@@ -71,15 +71,29 @@ const CalendarioView = ({ programas, onProgramaPress, onDatePress, getTipoColor 
   };
 
   const renderHeader = () => (
-    <View style={styles.header}>
-      <TouchableOpacity 
-        style={styles.navButton}
-        onPress={() => navegarMes('siguiente')}
-      >
-        <Icon name="chevron-right" size={wp(6)} color={colors.primary} />
-      </TouchableOpacity>
-    </View>
-  );
+  <View style={styles.header}>
+    {/* Botón anterior */}
+    <TouchableOpacity 
+      style={styles.navButton}
+      onPress={() => navegarMes('anterior')}
+    >
+      <Icon name="chevron-left" size={wp(6)} color={colors.primary} />
+    </TouchableOpacity>
+
+    {/* Título del mes */}
+    <Text style={styles.monthTitle}>
+      {format(currentDate, "MMMM yyyy", { locale: es })}
+    </Text>
+
+    {/* Botón siguiente */}
+    <TouchableOpacity 
+      style={styles.navButton}
+      onPress={() => navegarMes('siguiente')}
+    >
+      <Icon name="chevron-right" size={wp(6)} color={colors.primary} />
+    </TouchableOpacity>
+  </View>
+);
 
   const renderDaysOfWeek = () => (
     <View style={styles.daysOfWeekContainer}>

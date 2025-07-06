@@ -15,6 +15,10 @@ const getHostIP = () => {
 };
 
 const ENV = {
+  // Para desarrollo local
+  API_URL: 'http://192.168.195.117:3001/api',
+  WEBSOCKET_URL: 'http://192.168.195.117:3001',
+
   development: {
     API_URL: __DEV__ 
       ? `http://${getHostIP()}:3001/api`
