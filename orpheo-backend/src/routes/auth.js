@@ -5,49 +5,46 @@ const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
 
-// Validaciones
+// Validaciones para login
 const loginValidation = [
-  body('username')
-    .trim()
-    .isLength({ min: 3, max: 50 })
-    .withMessage('Username debe tener entre 3 y 50 caracteres'),
-  body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password debe tener al menos 6 caracteres')
-];
-
-const registerValidation = [
-  body('username')
-    .trim()
-    .isLength({ min: 3, max: 50 })
-    .withMessage('Username debe tener entre 3 y 50 caracteres')
-    .matches(/^[a-zA-Z0-9_]+$/)
-    .withMessage('Username solo puede contener letras, números y guiones bajos'),
   body('email')
-    .optional()
     .isEmail()
-    .withMessage('Debe ser un email válido'),
+    .normalizeEmail()
+    .withMessage('Email debe ser válido'),
   body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password debe tener al menos 6 caracteres'),
-  body('grado')
-    .isIn(['aprendiz', 'companero', 'maestro'])
-    .withMessage('Grado debe ser aprendiz, companero o maestro'),
-  body('cargo')
-    .optional()
-    .isLength({ max: 50 })
-    .withMessage('Cargo no puede exceder 50 caracteres'),
-  body('memberFullName')
-    .optional()
-    .isLength({ max: 100 })
-    .withMessage('Nombre completo no puede exceder 100 caracteres')
+    .isLength({ min: 1 })
+    .withMessage('Contraseña es requerida')
 ];
 
-// Rutas
+// Validaciones para cambio de contraseña
+const changePasswordValidation = [
+  body('currentPassword')
+    .isLength({ min: 1 })
+    .withMessage('Contraseña actual es requerida'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('Nueva contraseña debe tener al menos 8 caracteres')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage('Nueva contraseña debe contener al menos: 1 minúscula, 1 mayúscula, 1 número y 1 carácter especial')
+];
+
+// Rutas públicas (sin autenticación)
+
+// POST /api/auth/login - Iniciar sesión
 router.post('/login', loginValidation, authController.login);
-router.post('/register', registerValidation, authController.register);
-router.get('/verify', authMiddleware, authController.verifyToken);
+
+// POST /api/auth/refresh - Renovar token de acceso
 router.post('/refresh', authController.refreshToken);
+
+// Rutas protegidas (requieren autenticación)
+
+// GET /api/auth/me - Obtener información del usuario actual
+router.get('/me', authMiddleware, authController.getCurrentUser);
+
+// POST /api/auth/logout - Cerrar sesión
 router.post('/logout', authMiddleware, authController.logout);
+
+// POST /api/auth/change-password - Cambiar contraseña
+router.post('/change-password', authMiddleware, changePasswordValidation, authController.changePassword);
 
 module.exports = router;

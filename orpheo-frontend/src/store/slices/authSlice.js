@@ -1,285 +1,440 @@
-import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
-import * as SecureStore from 'expo-secure-store';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import authService from '../../services/authService';
+import Toast from 'react-native-toast-message';
 
-export const loginUser = createAsyncThunk(
-  'auth/loginUser',
-  async (credentials, { rejectWithValue, getState }) => {
+// Estado inicial
+const initialState = {
+  user: null,
+  accessToken: null,
+  refreshToken: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
+  loginAttempts: 0,
+  lastLoginAttempt: null,
+  sessionExpiry: null,
+  permissions: [],
+  isRefreshing: false
+};
+
+// Thunks asíncronos
+
+// Login
+export const login = createAsyncThunk(
+  'auth/login',
+  async (credentials, { rejectWithValue }) => {
     try {
-      // Verificar si está bloqueado antes de intentar
-      const { auth } = getState();
-      if (auth.isLocked && auth.lockUntil && new Date() < new Date(auth.lockUntil)) {
-        const remainingTime = Math.ceil((new Date(auth.lockUntil) - new Date()) / 1000);
-        throw new Error(`Cuenta bloqueada. Inténtalo en ${remainingTime} segundos.`);
-      }
-
-      const response = await authService.login(credentials);
+      const result = await authService.login(credentials);
       
-      // Guardar token en SecureStore (máxima seguridad)
-      if (response.token) {
-        await SecureStore.setItemAsync('authToken', response.token);
+      if (result.success) {
+        return result.data;
+      } else {
+        return rejectWithValue(result.message || 'Error en el login');
       }
-      
-      return response;
     } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || error.message || 'Error al iniciar sesión'
-      );
+      return rejectWithValue(error.message || 'Error inesperado');
     }
   }
 );
 
-export const logoutUser = createAsyncThunk(
-  'auth/logoutUser',
-  async () => {
+// Logout
+export const logout = createAsyncThunk(
+  'auth/logout',
+  async (_, { dispatch }) => {
     try {
       await authService.logout();
+      
+      // Limpiar todos los datos relacionados con la autenticación
+      dispatch(clearAuthData());
+      
+      return true;
     } catch (error) {
-      // Ignorar errores del servidor
+      // Incluso si falla el logout del servidor, limpiar datos locales
+      dispatch(clearAuthData());
+      return true;
     }
-    await SecureStore.deleteItemAsync('authToken');
-    return null;
   }
 );
 
+// Refresh token
+export const refreshAccessToken = createAsyncThunk(
+  'auth/refreshToken',
+  async (_, { rejectWithValue, getState }) => {
+    try {
+      const { auth } = getState();
+      
+      // Evitar múltiples refresh simultáneos
+      if (auth.isRefreshing) {
+        return rejectWithValue('Ya se está renovando el token');
+      }
+
+      const result = await authService.refreshToken();
+      
+      if (result.success) {
+        return result.data;
+      } else {
+        return rejectWithValue(result.message || 'Error al renovar token');
+      }
+    } catch (error) {
+      return rejectWithValue(error.message || 'Error inesperado');
+    }
+  }
+);
+
+// Obtener usuario actual
 export const getCurrentUser = createAsyncThunk(
   'auth/getCurrentUser',
   async (_, { rejectWithValue }) => {
     try {
-      const token = await SecureStore.getItemAsync('authToken');
-      if (!token) {
-        throw new Error('No token found');
-      }
+      const result = await authService.getCurrentUser();
       
-      const response = await authService.getCurrentUser();
-      return response;
+      if (result.success) {
+        return result.data;
+      } else {
+        return rejectWithValue(result.message || 'Error al obtener usuario');
+      }
     } catch (error) {
-      await SecureStore.deleteItemAsync('authToken');
-      return rejectWithValue('Token inválido');
+      return rejectWithValue(error.message || 'Error inesperado');
     }
   }
 );
 
-// ✅ Función para calcular tiempo de bloqueo progresivo
-const calculateLockTime = (attempts) => {
-  if (attempts < 3) return 0;
-  if (attempts < 6) return 30; // 30 segundos después de 3 intentos
-  if (attempts < 9) return 45; // 45 segundos después de 6 intentos
-  return 60; // 60 segundos después de 9 intentos (máximo)
-};
+// Cambiar contraseña
+export const changePassword = createAsyncThunk(
+  'auth/changePassword',
+  async (passwordData, { rejectWithValue }) => {
+    try {
+      const result = await authService.changePassword(passwordData);
+      
+      if (result.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Contraseña Cambiada',
+          text2: result.message || 'Contraseña actualizada exitosamente',
+          visibilityTime: 4000,
+        });
+        return result;
+      } else {
+        return rejectWithValue(result.message || 'Error al cambiar contraseña');
+      }
+    } catch (error) {
+      return rejectWithValue(error.message || 'Error inesperado');
+    }
+  }
+);
 
+// Verificar autenticación al iniciar la app
+export const checkAuthStatus = createAsyncThunk(
+  'auth/checkAuthStatus',
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      const [storedUser, accessToken, refreshToken] = await Promise.all([
+        authService.getStoredUser(),
+        authService.getStoredAccessToken(),
+        authService.getStoredRefreshToken()
+      ]);
+
+      if (!storedUser || !accessToken || !refreshToken) {
+        throw new Error('No hay sesión almacenada');
+      }
+
+      // Verificar si el token es válido
+      const isAuthenticated = await authService.isAuthenticated();
+      
+      if (isAuthenticated) {
+        // Token válido, restaurar sesión
+        return {
+          user: storedUser,
+          accessToken,
+          refreshToken
+        };
+      } else {
+        // Token inválido, intentar refresh
+        const refreshResult = await authService.refreshToken();
+        
+        if (refreshResult.success) {
+          return {
+            user: storedUser,
+            accessToken: refreshResult.data.accessToken,
+            refreshToken
+          };
+        } else {
+          throw new Error('Sesión expirada');
+        }
+      }
+    } catch (error) {
+      // Limpiar datos si hay error
+      await authService.clearLocalData();
+      return rejectWithValue(error.message || 'Error al verificar autenticación');
+    }
+  }
+);
+
+// Slice
 const authSlice = createSlice({
   name: 'auth',
-  initialState: {
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    loading: false,
-    error: null,
-    
-    // ✅ Sistema de bloqueo mejorado
-    loginAttempts: 0,
-    maxLoginAttempts: 999, // Sin límite máximo, solo bloqueos temporales
-    isLocked: false,
-    lockUntil: null,
-    lockDuration: 0, // en segundos
-    
-    // Historial para debug - ✅ inicializado como array
-    attemptHistory: [],
-  },
+  initialState,
   reducers: {
+    // Limpiar datos de autenticación
+    clearAuthData: (state) => {
+      state.user = null;
+      state.accessToken = null;
+      state.refreshToken = null;
+      state.isAuthenticated = false;
+      state.isLoading = false;
+      state.error = null;
+      state.sessionExpiry = null;
+      state.permissions = [];
+      state.isRefreshing = false;
+    },
+
+    // Limpiar errores
     clearError: (state) => {
       state.error = null;
     },
-    
+
+    // Actualizar usuario
+    updateUser: (state, action) => {
+      if (state.user) {
+        state.user = { ...state.user, ...action.payload };
+      }
+    },
+
+    // Incrementar intentos de login
+    incrementLoginAttempts: (state) => {
+      state.loginAttempts += 1;
+      state.lastLoginAttempt = new Date().toISOString();
+    },
+
+    // Reset intentos de login
     resetLoginAttempts: (state) => {
       state.loginAttempts = 0;
-      state.isLocked = false;
-      state.lockUntil = null;
-      state.lockDuration = 0;
-      state.attemptHistory = [];
+      state.lastLoginAttempt = null;
     },
-    
-    // ✅ Verificar si el bloqueo ha expirado
-    checkLockStatus: (state) => {
-      if (state.isLocked && state.lockUntil) {
-        const now = new Date();
-        const lockUntil = new Date(state.lockUntil);
-        
-        if (now >= lockUntil) {
-          // El bloqueo ha expirado
-          state.isLocked = false;
-          state.lockUntil = null;
-          state.lockDuration = 0;
-          // NO resetear loginAttempts para mantener el progreso del bloqueo
-        }
+
+    // Actualizar permisos
+    updatePermissions: (state) => {
+      if (state.user) {
+        state.permissions = authService.getUserPermissions(state.user);
       }
     },
-    
-    // ✅ Aplicar bloqueo temporal
-    applyTemporaryLock: (state) => {
-      const lockSeconds = calculateLockTime(state.loginAttempts);
-      
-      if (lockSeconds > 0) {
-        state.isLocked = true;
-        state.lockDuration = lockSeconds;
-        state.lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
-        
-        // Asegurar que attemptHistory existe
-        if (!state.attemptHistory) {
-          state.attemptHistory = [];
-        }
-        
-        // Agregar al historial
-        state.attemptHistory.push({
-          timestamp: new Date().toISOString(),
-          attempts: state.loginAttempts,
-          lockDuration: lockSeconds
-        });
-        
-        console.log(`🔒 Cuenta bloqueada por ${lockSeconds} segundos después de ${state.loginAttempts} intentos`);
-      }
+
+    // Actualizar token de acceso
+    setAccessToken: (state, action) => {
+      state.accessToken = action.payload;
+    },
+
+    // Marcar como refrescando
+    setRefreshing: (state, action) => {
+      state.isRefreshing = action.payload;
     }
   },
   extraReducers: (builder) => {
+    // Login
     builder
-      .addCase(loginUser.pending, (state) => {
-        state.loading = true;
+      .addCase(login.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
       })
-      .addCase(loginUser.fulfilled, (state, action) => {
-        state.loading = false;
-        state.isAuthenticated = true;
+      .addCase(login.fulfilled, (state, action) => {
+        state.isLoading = false;
         state.user = action.payload.user;
-        state.token = action.payload.token;
-        
-        // ✅ Reset completo al login exitoso
+        state.accessToken = action.payload.accessToken;
+        state.refreshToken = action.payload.refreshToken;
+        state.isAuthenticated = true;
+        state.error = null;
         state.loginAttempts = 0;
-        state.isLocked = false;
-        state.lockUntil = null;
-        state.lockDuration = 0;
-        state.attemptHistory = [];
+        state.lastLoginAttempt = null;
+        state.permissions = authService.getUserPermissions(action.payload.user);
         
-        console.log('✅ Login exitoso - Bloqueos reseteados');
+        // Calcular expiración de sesión (aproximada)
+        const expiryTime = new Date();
+        expiryTime.setMinutes(expiryTime.getMinutes() + 15); // 15 minutos por defecto
+        state.sessionExpiry = expiryTime.toISOString();
+
+        Toast.show({
+          type: 'success',
+          text1: 'Bienvenido',
+          text2: `Hola ${action.payload.user.nombres}`,
+          visibilityTime: 3000,
+        });
       })
-      .addCase(loginUser.rejected, (state, action) => {
-        state.loading = false;
+      .addCase(login.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+        state.loginAttempts += 1;
+        state.lastLoginAttempt = new Date().toISOString();
+
+        Toast.show({
+          type: 'error',
+          text1: 'Error de Login',
+          text2: action.payload || 'Credenciales inválidas',
+          visibilityTime: 4000,
+        });
+      });
+
+    // Logout
+    builder
+      .addCase(logout.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(logout.fulfilled, (state) => {
+        return { ...initialState }; // Reset completo del estado
+      })
+      .addCase(logout.rejected, (state) => {
+        return { ...initialState }; // Reset incluso si falla
+      });
+
+    // Refresh token
+    builder
+      .addCase(refreshAccessToken.pending, (state) => {
+        state.isRefreshing = true;
+        state.error = null;
+      })
+      .addCase(refreshAccessToken.fulfilled, (state, action) => {
+        state.isRefreshing = false;
+        state.accessToken = action.payload.accessToken;
+        
+        // Actualizar expiración
+        const expiryTime = new Date();
+        expiryTime.setMinutes(expiryTime.getMinutes() + 15);
+        state.sessionExpiry = expiryTime.toISOString();
+      })
+      .addCase(refreshAccessToken.rejected, (state, action) => {
+        state.isRefreshing = false;
         state.error = action.payload;
         
-        // ✅ Solo incrementar si no está bloqueado actualmente
-        if (!state.isLocked) {
-          state.loginAttempts += 1;
-          
-          // Aplicar bloqueo si es necesario
-          if (state.loginAttempts % 3 === 0) {
-            const lockSeconds = calculateLockTime(state.loginAttempts);
-            if (lockSeconds > 0) {
-              state.isLocked = true;
-              state.lockDuration = lockSeconds;
-              state.lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
-              
-              // Asegurar que attemptHistory existe
-              if (!state.attemptHistory) {
-                state.attemptHistory = [];
-              }
-              
-              state.attemptHistory.push({
-                timestamp: new Date().toISOString(),
-                attempts: state.loginAttempts,
-                lockDuration: lockSeconds
-              });
-              
-              console.log(`🔒 Bloqueo aplicado: ${lockSeconds}s después de ${state.loginAttempts} intentos`);
-            }
-          }
-        }
-      })
-      .addCase(logoutUser.fulfilled, (state) => {
-        state.user = null;
-        state.token = null;
-        state.isAuthenticated = false;
-        state.loading = false;
-        state.error = null;
-        // NO resetear loginAttempts en logout para mantener el historial de intentos
-      })
+        // Si falla el refresh, hacer logout
+        return { ...initialState };
+      });
+
+    // Get current user
+    builder
       .addCase(getCurrentUser.pending, (state) => {
-        state.loading = true;
+        state.isLoading = true;
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
-        state.loading = false;
-        state.isAuthenticated = true;
-        state.user = action.payload.user;
+        state.isLoading = false;
+        state.user = action.payload;
+        state.permissions = authService.getUserPermissions(action.payload);
       })
-      .addCase(getCurrentUser.rejected, (state) => {
-        state.loading = false;
-        state.isAuthenticated = false;
-        state.user = null;
-        state.token = null;
+      .addCase(getCurrentUser.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
       });
-  },
+
+    // Change password
+    builder
+      .addCase(changePassword.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(changePassword.fulfilled, (state) => {
+        state.isLoading = false;
+        // Nota: después de cambiar contraseña, el backend invalida los tokens
+        // El usuario tendrá que hacer login nuevamente
+      })
+      .addCase(changePassword.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Check auth status
+    builder
+      .addCase(checkAuthStatus.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(checkAuthStatus.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.user = action.payload.user;
+        state.accessToken = action.payload.accessToken;
+        state.refreshToken = action.payload.refreshToken;
+        state.isAuthenticated = true;
+        state.permissions = authService.getUserPermissions(action.payload.user);
+        
+        // Calcular expiración
+        const expiryTime = new Date();
+        expiryTime.setMinutes(expiryTime.getMinutes() + 15);
+        state.sessionExpiry = expiryTime.toISOString();
+      })
+      .addCase(checkAuthStatus.rejected, (state) => {
+        state.isLoading = false;
+        return { ...initialState };
+      });
+  }
 });
 
-export const { 
-  clearError, 
-  resetLoginAttempts, 
-  checkLockStatus, 
-  applyTemporaryLock 
-} = authSlice.actions;
-
-export default authSlice.reducer;
-
-// ✅ Selectores básicos
+// Selectores
 export const selectAuth = (state) => state.auth;
 export const selectUser = (state) => state.auth.user;
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
-export const selectAuthLoading = (state) => state.auth.loading;
-export const selectAuthError = (state) => state.auth.error;
+export const selectIsLoading = (state) => state.auth.isLoading;
+export const selectError = (state) => state.auth.error;
+export const selectPermissions = (state) => state.auth.permissions;
+export const selectLoginAttempts = (state) => state.auth.loginAttempts;
+export const selectUserRole = (state) => state.auth.user?.rol;
+export const selectUserGrade = (state) => state.auth.user?.grado;
+export const selectIsRefreshing = (state) => state.auth.isRefreshing;
 
-// ✅ Selectores memoizados para evitar re-renders innecesarios
-export const selectCanLogin = createSelector(
-  [selectAuth],
-  (auth) => {
-    const { isLocked, lockUntil } = auth;
-    
-    if (!isLocked) return true;
-    if (!lockUntil) return true;
-    
-    const now = new Date();
-    const lockExpires = new Date(lockUntil);
-    
-    return now >= lockExpires;
-  }
-);
+// Selectores con lógica
+export const selectCanManageMembers = (state) => {
+  const user = state.auth.user;
+  return user && authService.hasPermission(user, 'manage_members');
+};
 
-export const selectRemainingLockTime = createSelector(
-  [selectAuth],
-  (auth) => {
-    const { isLocked, lockUntil } = auth;
-    
-    if (!isLocked || !lockUntil) return 0;
-    
-    const now = new Date();
-    const lockExpires = new Date(lockUntil);
-    const remaining = Math.max(0, Math.ceil((lockExpires - now) / 1000));
-    
-    return remaining;
-  }
-);
+export const selectCanManageDocuments = (state) => {
+  const user = state.auth.user;
+  return user && authService.hasPermission(user, 'manage_documents');
+};
 
-// ✅ Selector memoizado para información de bloqueo
-export const selectLockInfo = createSelector(
-  [selectAuth, selectRemainingLockTime, selectCanLogin],
-  (auth, remainingTime, canLogin) => {
-    const { loginAttempts, isLocked, lockDuration, attemptHistory = [] } = auth;
-    
-    return {
-      attempts: loginAttempts,
-      isLocked: isLocked || false,
-      lockDuration: lockDuration || 0,
-      remainingTime,
-      canLogin,
-      history: attemptHistory,
-      nextLockDuration: calculateLockTime(loginAttempts + (loginAttempts % 3 === 2 ? 1 : 0))
-    };
-  }
-);
+export const selectCanAprovePlanchas = (state) => {
+  const user = state.auth.user;
+  return user && authService.hasPermission(user, 'approve_planchas');
+};
+
+export const selectCanAccessGrade = (targetGrade) => (state) => {
+  const user = state.auth.user;
+  return user && authService.canAccessGrade(user, targetGrade);
+};
+
+export const selectIsAdmin = (state) => {
+  const user = state.auth.user;
+  return user && ['admin', 'superadmin'].includes(user.rol);
+};
+
+export const selectIsSuperAdmin = (state) => {
+  const user = state.auth.user;
+  return user && user.rol === 'superadmin';
+};
+
+export const selectUserDisplayName = (state) => {
+  const user = state.auth.user;
+  return user ? `${user.nombres} ${user.apellidos}` : '';
+};
+
+export const selectIsSessionExpiring = (state) => {
+  const expiry = state.auth.sessionExpiry;
+  if (!expiry) return false;
+  
+  const now = new Date();
+  const expiryDate = new Date(expiry);
+  const timeDiff = expiryDate.getTime() - now.getTime();
+  
+  // Considerar que expira si quedan menos de 2 minutos
+  return timeDiff < 2 * 60 * 1000;
+};
+
+// Acciones
+export const {
+  clearAuthData,
+  clearError,
+  updateUser,
+  incrementLoginAttempts,
+  resetLoginAttempts,
+  updatePermissions,
+  setAccessToken,
+  setRefreshing
+} = authSlice.actions;
+
+export default authSlice.reducer;

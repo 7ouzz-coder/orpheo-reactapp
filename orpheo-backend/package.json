@@ -1,50 +1,80 @@
 {
   "name": "orpheo-backend",
   "version": "1.0.0",
-  "description": "Orpheo Backend API - Sistema de Gestión Masónica",
+  "description": "API Backend para el sistema de gestión masónica Orpheo",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "migrate": "npx sequelize-cli db:migrate",
     "migrate:undo": "npx sequelize-cli db:migrate:undo",
-    "migrate:reset": "npx sequelize-cli db:migrate:undo:all && npm run migrate",
     "seed": "npx sequelize-cli db:seed:all",
     "seed:undo": "npx sequelize-cli db:seed:undo:all",
-    "db:reset": "npm run migrate:reset && npm run seed",
-    "test": "jest",
-    "lint": "eslint src --ext .js"
+    "db:reset": "npm run migrate:undo && npm run migrate && npm run seed",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "init:full": "chmod +x src/scripts/init-full.sh && ./src/scripts/init-full.sh"
   },
+  "keywords": [
+    "nodejs",
+    "express",
+    "postgresql",
+    "jwt",
+    "api",
+    "masonic",
+    "management"
+  ],
+  "author": "Orpheo Development Team",
+  "license": "MIT",
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "compression": "^1.7.4",
-    "cors": "^2.8.5",
-    "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "express-rate-limit": "^6.7.0",
-    "express-validator": "^6.14.3",
-    "helmet": "^6.0.1",
-    "joi": "^17.7.0",
-    "jsonwebtoken": "^9.0.0",
-    "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1",
-    "node-cron": "^3.0.2",
-    "nodemailer": "^6.9.1",
-    "pg": "^8.16.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "dotenv": "^16.3.1",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "sequelize": "^6.32.1",
+    "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.28.0",
-    "socket.io": "^4.6.1",
-    "winston": "^3.8.2"
+    "express-validator": "^7.0.1",
+    "express-rate-limit": "^6.10.0",
+    "rate-limiter-flexible": "^2.4.2",
+    "multer": "^1.4.5-lts.1",
+    "winston": "^3.10.0",
+    "winston-daily-rotate-file": "^4.7.1",
+    "compression": "^1.7.4",
+    "socket.io": "^4.7.2",
+    "nodemailer": "^6.9.4",
+    "xlsx": "^0.18.5",
+    "moment": "^2.29.4",
+    "joi": "^17.9.2",
+    "uuid": "^9.0.0",
+    "morgan": "^1.10.0",
+    "express-slow-down": "^1.6.0"
   },
   "devDependencies": {
-    "eslint": "^8.33.0",
-    "jest": "^29.7.0",
-    "nodemon": "^2.0.22",
-    "sequelize-cli": "^6.6.3",
-    "supertest": "^6.3.4"
+    "nodemon": "^3.0.1",
+    "jest": "^29.6.2",
+    "supertest": "^6.3.3",
+    "eslint": "^8.46.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-node": "^11.1.0",
+    "sequelize-cli": "^6.6.1",
+    "@types/jest": "^29.5.3"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=16.0.0",
     "npm": ">=8.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/7ouzz-coder/orpheo-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/7ouzz-coder/orpheo-backend/issues"
+  },
+  "homepage": "https://github.com/7ouzz-coder/orpheo-backend#readme"
 }

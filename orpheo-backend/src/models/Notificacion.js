@@ -209,7 +209,7 @@ Notificacion.findByUser = function(usuarioId, options = {}) {
     limit,
     include: [
       {
-        model: require('./user'),
+        model: require('./User'),
         as: 'remitente',
         attributes: ['id', 'username', 'member_full_name'],
         required: false

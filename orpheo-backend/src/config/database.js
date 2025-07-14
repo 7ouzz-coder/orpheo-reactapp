@@ -1,30 +1,72 @@
-const { Sequelize } = require('sequelize');
-const logger = require('../utils/logger');
+require('dotenv').config();
 
-const sequelize = new Sequelize(
-  process.env.DATABASE_URL || 'postgresql://orpheo_user:orpheo_password@localhost:5432/orpheo_db',
-  {
-    dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? 
-      (msg) => logger.debug(msg) : false,
+module.exports = {
+  development: {
+    username: process.env.DB_USER || 'orpheo_user',
+    password: process.env.DB_PASSWORD || 'orpheo_password_123',
+    database: process.env.DB_NAME || 'orpheo_db',
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    dialect: 'postgresql',
+    logging: console.log,
     pool: {
-      max: 10,
+      max: 5,
       min: 0,
       acquire: 30000,
-      idle: 10000,
+      idle: 10000
     },
     define: {
       timestamps: true,
       underscored: true,
-      freezeTableName: true,
+      freezeTableName: true
+    }
+  },
+  
+  test: {
+    username: process.env.DB_USER || 'orpheo_user',
+    password: process.env.DB_PASSWORD || 'orpheo_password_123',
+    database: process.env.DB_NAME_TEST || 'orpheo_db_test',
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    dialect: 'postgresql',
+    logging: false,
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    },
+    define: {
+      timestamps: true,
+      underscored: true,
+      freezeTableName: true
+    }
+  },
+  
+  production: {
+    username: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 5432,
+    dialect: 'postgresql',
+    logging: false,
+    pool: {
+      max: 20,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    },
+    define: {
+      timestamps: true,
+      underscored: true,
+      freezeTableName: true
     },
     dialectOptions: {
-      ssl: process.env.NODE_ENV === 'production' ? {
+      ssl: process.env.DB_SSL === 'true' ? {
         require: true,
         rejectUnauthorized: false
       } : false
     }
   }
-);
-
-module.exports = sequelize;
+};

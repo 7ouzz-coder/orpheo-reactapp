@@ -1,137 +1,98 @@
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const path = require('path');
-const fs = require('fs').promises;
-const crypto = require('crypto');
 const { Documento, User } = require('../models');
+const fs = require('fs').promises;
+const path = require('path');
 const logger = require('../utils/logger');
-const { canViewGrado, hasPermission, canPerformCRUD } = require('../utils/permissions');
-const NotificationService = require('../services/notificationService');
 
-const documentosController = {
-  // Obtener todos los documentos
+class DocumentosController {
+  
+  // GET /api/documentos - Obtener todos los documentos con filtros y paginación
   async getDocumentos(req, res) {
     try {
-      const { 
-        categoria, 
-        tipo, 
-        esplancha, 
-        search, 
-        page = 1, 
-        limit = 20, 
-        sortBy = 'created_at', 
-        sortOrder = 'DESC' 
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const {
+        page = 1,
+        limit = 10,
+        search = '',
+        categoria = '',
+        tipo = '',
+        estado = '',
+        sortBy = 'created_at',
+        sortOrder = 'DESC'
       } = req.query;
-      
-      const offset = (page - 1) * limit;
-      
-      // Construir condiciones de búsqueda
-      const where = { activo: true };
-      
-      // Filtro por categoría con permisos
-      if (categoria && categoria !== 'todos') {
-        if (!canViewGrado(req.user.grado, categoria)) {
-          return res.status(403).json({
-            success: false,
-            message: 'No tiene permisos para ver documentos de esta categoría'
-          });
-        }
-        where.categoria = categoria;
-      } else {
-        // Aplicar filtros por permisos de grado
-        const allowedCategorias = [];
-        if (canViewGrado(req.user.grado, 'aprendiz')) allowedCategorias.push('aprendiz');
-        if (canViewGrado(req.user.grado, 'companero')) allowedCategorias.push('companero');
-        if (canViewGrado(req.user.grado, 'maestro')) allowedCategorias.push('maestro');
-        allowedCategorias.push('general', 'administrativo'); // Todos pueden ver documentos generales
-        
-        where.categoria = { [Op.in]: allowedCategorias };
-      }
-      
-      // Filtro por tipo de archivo
-      if (tipo && tipo !== 'todos') {
-        where.tipo = tipo;
-      }
-      
-      // Filtro por planchas
-      if (esplancha === 'true') {
-        where.es_plancha = true;
-      } else if (esplancha === 'false') {
-        where.es_plancha = false;
-      }
-      
-      // Búsqueda por texto
+
+      // Construir condiciones WHERE dinámicamente
+      const whereConditions = {};
+
+      // Filtro de búsqueda por nombre o descripción
       if (search) {
-        where[Op.or] = [
+        whereConditions[Op.or] = [
           { nombre: { [Op.iLike]: `%${search}%` } },
-          { descripcion: { [Op.iLike]: `%${search}%` } },
-          { palabras_clave: { [Op.iLike]: `%${search}%` } },
-          { autor_nombre: { [Op.iLike]: `%${search}%` } }
+          { descripcion: { [Op.iLike]: `%${search}%` } }
         ];
       }
-      
-      // Ejecutar consulta
-      const { count, rows } = await Documento.findAndCountAll({
-        where,
+
+      // Filtros específicos
+      if (categoria) whereConditions.categoria = categoria;
+      if (tipo) whereConditions.tipo = tipo;
+      if (estado) whereConditions.estado = estado;
+
+      // Permisos por grado: Aprendices solo ven documentos de su categoría o general
+      if (req.user.grado === 'aprendiz') {
+        whereConditions.categoria = { [Op.in]: ['aprendiz', 'general'] };
+      } else if (req.user.grado === 'companero') {
+        whereConditions.categoria = { [Op.in]: ['aprendiz', 'companero', 'general'] };
+      }
+      // Maestros pueden ver todo
+
+      const offset = (page - 1) * limit;
+
+      const { count, rows: documentos } = await Documento.findAndCountAll({
+        where: whereConditions,
         include: [
           {
             model: User,
             as: 'autor',
-            attributes: ['id', 'username', 'member_full_name'],
-            required: false
-          },
-          {
-            model: User,
-            as: 'subidoPor',
-            attributes: ['id', 'username', 'member_full_name'],
-            required: false
+            attributes: ['id', 'nombres', 'apellidos', 'grado']
           }
         ],
-        order: [[sortBy, sortOrder.toUpperCase()]],
+        order: [[sortBy, sortOrder]],
         limit: parseInt(limit),
         offset: parseInt(offset)
       });
-      
-      // Formatear respuesta
-      const documentos = rows.map(doc => ({
-        id: doc.id,
-        nombre: doc.nombre,
-        tipo: doc.tipo,
-        descripcion: doc.descripcion,
-        tamano: doc.tamano,
-        tamanoFormateado: doc.getTamanoFormateado(),
-        categoria: doc.categoria,
-        subcategoria: doc.subcategoria,
-        palabrasClave: doc.palabras_clave,
-        esPlancha: doc.es_plancha,
-        planchaId: doc.plancha_id,
-        planchaEstado: doc.plancha_estado,
-        version: doc.version,
-        descargas: doc.descargas,
-        visualizaciones: doc.visualizaciones,
-        autor: doc.autor ? {
-          id: doc.autor.id,
-          nombre: doc.autor.member_full_name || doc.autor.username
-        } : null,
-        subidoPor: doc.subidoPor ? {
-          id: doc.subidoPor.id,
-          nombre: doc.subidoPor.member_full_name || doc.subidoPor.username
-        } : null,
-        createdAt: doc.created_at,
-        updatedAt: doc.updated_at
-      }));
-      
-      res.json({
+
+      const totalPages = Math.ceil(count / limit);
+
+      logger.info(`Documentos consultados por usuario ${req.user.id}`, {
+        userId: req.user.id,
+        filters: { search, categoria, tipo, estado },
+        totalResults: count
+      });
+
+      res.status(200).json({
         success: true,
-        data: documentos,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: count,
-          totalPages: Math.ceil(count / limit)
+        data: {
+          documentos,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages,
+            totalItems: count,
+            itemsPerPage: parseInt(limit),
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+          }
         }
       });
-      
+
     } catch (error) {
       logger.error('Error al obtener documentos:', error);
       res.status(500).json({
@@ -139,329 +100,61 @@ const documentosController = {
         message: 'Error interno del servidor'
       });
     }
-  },
+  }
 
-  // Obtener un documento por ID
-  async getDocumentoById(req, res) {
-    try {
-      const { id } = req.params;
-      
-      const documento = await Documento.findByPk(id, {
-        include: [
-          {
-            model: User,
-            as: 'autor',
-            attributes: ['id', 'username', 'member_full_name', 'email']
-          },
-          {
-            model: User,
-            as: 'subidoPor',
-            attributes: ['id', 'username', 'member_full_name']
-          }
-        ]
-      });
-      
-      if (!documento || !documento.activo) {
-        return res.status(404).json({
-          success: false,
-          message: 'Documento no encontrado'
-        });
-      }
-      
-      // Verificar permisos
-      if (!canViewGrado(req.user.grado, documento.categoria)) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para ver este documento'
-        });
-      }
-      
-      // Incrementar visualizaciones
-      await documento.incrementarVisualizaciones();
-      
-      res.json({
-        success: true,
-        data: {
-          id: documento.id,
-          nombre: documento.nombre,
-          tipo: documento.tipo,
-          descripcion: documento.descripcion,
-          tamano: documento.tamano,
-          tamanoFormateado: documento.getTamanoFormateado(),
-          url: documento.url,
-          categoria: documento.categoria,
-          subcategoria: documento.subcategoria,
-          palabrasClave: documento.palabras_clave,
-          esPlancha: documento.es_plancha,
-          planchaId: documento.plancha_id,
-          planchaEstado: documento.plancha_estado,
-          planchaComentarios: documento.plancha_comentarios,
-          version: documento.version,
-          descargas: documento.descargas,
-          visualizaciones: documento.visualizaciones,
-          autor: documento.autor ? {
-            id: documento.autor.id,
-            nombre: documento.autor.member_full_name || documento.autor.username,
-            email: documento.autor.email
-          } : null,
-          subidoPor: documento.subidoPor ? {
-            id: documento.subidoPor.id,
-            nombre: documento.subidoPor.member_full_name || documento.subidoPor.username
-          } : null,
-          createdAt: documento.created_at,
-          updatedAt: documento.updated_at
-        }
-      });
-      
-    } catch (error) {
-      logger.error('Error al obtener documento:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Subir nuevo documento
-  async uploadDocumento(req, res) {
-    try {
-      // Verificar permisos
-      if (!hasPermission(req.user, 'upload_documents')) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para subir documentos'
-        });
-      }
-
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos de entrada inválidos',
-          errors: errors.array()
-        });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: 'No se proporcionó ningún archivo'
-        });
-      }
-
-      // Generar hash del archivo para verificar integridad
-      const fileBuffer = await fs.readFile(req.file.path);
-      const hashSum = crypto.createHash('sha256');
-      hashSum.update(fileBuffer);
-      const hex = hashSum.digest('hex');
-
-      // Crear registro en base de datos
-      const nuevoDocumento = await Documento.create({
-        nombre: req.body.nombre || req.file.originalname,
-        tipo: path.extname(req.file.originalname).slice(1).toLowerCase(),
-        descripcion: req.body.descripcion,
-        tamano: req.file.size,
-        url: `/uploads/${req.file.filename}`,
-        ruta_local: req.file.path,
-        hash_archivo: hex,
-        categoria: req.body.categoria,
-        subcategoria: req.body.subcategoria,
-        palabras_clave: req.body.palabrasClave,
-        es_plancha: req.body.esPlancha === 'true',
-        plancha_id: req.body.planchaId,
-        autor_id: req.body.autorId || req.user.id,
-        autor_nombre: req.body.autorNombre,
-        subido_por_id: req.user.id,
-        subido_por_nombre: req.user.member_full_name || req.user.username
-      });
-
-      logger.info(`Documento subido - ID: ${nuevoDocumento.id}, Archivo: ${req.file.originalname}`);
-
-      // Emitir notificación en tiempo real
-      const io = req.app.get('io');
-      if (io) {
-        io.emit('new_document', {
-          type: 'new_document',
-          data: {
-            id: nuevoDocumento.id,
-            nombre: nuevoDocumento.nombre,
-            categoria: nuevoDocumento.categoria,
-            autor: nuevoDocumento.autor_nombre
-          }
-        });
-      }
-
-      // Enviar notificación automática
-      try {
-        await NotificationService.notifyNewDocument(nuevoDocumento, req.user.id);
-      } catch (notificationError) {
-        logger.warn('Error al enviar notificación de nuevo documento:', notificationError);
-      }
-
-      res.status(201).json({
-        success: true,
-        message: 'Documento subido exitosamente',
-        data: {
-          id: nuevoDocumento.id,
-          nombre: nuevoDocumento.nombre,
-          tipo: nuevoDocumento.tipo,
-          categoria: nuevoDocumento.categoria,
-          tamano: nuevoDocumento.tamano
-        }
-      });
-
-    } catch (error) {
-      // Eliminar archivo si hay error
-      if (req.file && req.file.path) {
-        try {
-          await fs.unlink(req.file.path);
-        } catch (unlinkError) {
-          logger.error('Error al eliminar archivo:', unlinkError);
-        }
-      }
-
-      logger.error('Error al subir documento:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Descargar documento
-  async downloadDocumento(req, res) {
-    try {
-      const { id } = req.params;
-      
-      const documento = await Documento.findByPk(id);
-      
-      if (!documento || !documento.activo) {
-        return res.status(404).json({
-          success: false,
-          message: 'Documento no encontrado'
-        });
-      }
-      
-      // Verificar permisos
-      if (!canViewGrado(req.user.grado, documento.categoria)) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para descargar este documento'
-        });
-      }
-      
-      // Verificar que el archivo existe
-      if (!documento.ruta_local) {
-        return res.status(404).json({
-          success: false,
-          message: 'Archivo no disponible'
-        });
-      }
-
-      try {
-        await fs.access(documento.ruta_local);
-      } catch {
-        return res.status(404).json({
-          success: false,
-          message: 'Archivo no encontrado en el servidor'
-        });
-      }
-
-      // Incrementar contador de descargas
-      await documento.incrementarDescargas();
-      
-      // Configurar headers para descarga
-      res.setHeader('Content-Disposition', `attachment; filename="${documento.nombre}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      
-      // Enviar archivo
-      res.sendFile(path.resolve(documento.ruta_local));
-      
-      logger.info(`Documento descargado - ID: ${documento.id}, Usuario: ${req.user.username}`);
-      
-    } catch (error) {
-      logger.error('Error al descargar documento:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Obtener estadísticas de documentos
+  // GET /api/documentos/estadisticas - Obtener estadísticas de documentos
   async getEstadisticas(req, res) {
     try {
-      const stats = {};
+      const whereCondition = {};
 
-      // Estadísticas generales
-      stats.total = await Documento.count({ where: { activo: true } });
-      stats.totalInactivos = await Documento.count({ where: { activo: false } });
+      // Aplicar restricciones de grado
+      if (req.user.grado === 'aprendiz') {
+        whereCondition.categoria = { [Op.in]: ['aprendiz', 'general'] };
+      } else if (req.user.grado === 'companero') {
+        whereCondition.categoria = { [Op.in]: ['aprendiz', 'companero', 'general'] };
+      }
 
-      // Por categoría
-      const categoriaCounts = await Documento.findAll({
+      const [
+        totalDocumentos,
+        documentosAprobados,
+        documentosPendientes,
+        documentosRechazados,
+        planchasTotal,
+        planchasPendientes
+      ] = await Promise.all([
+        Documento.count({ where: whereCondition }),
+        Documento.count({ where: { ...whereCondition, estado: 'aprobado' } }),
+        Documento.count({ where: { ...whereCondition, estado: 'pendiente' } }),
+        Documento.count({ where: { ...whereCondition, estado: 'rechazado' } }),
+        Documento.count({ where: { ...whereCondition, tipo: 'plancha' } }),
+        Documento.count({ where: { ...whereCondition, tipo: 'plancha', estado: 'pendiente' } })
+      ]);
+
+      const estadisticasPorCategoria = await Documento.findAll({
+        where: whereCondition,
         attributes: [
           'categoria',
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+          [require('sequelize').fn('COUNT', '*'), 'total']
         ],
-        where: { activo: true },
         group: ['categoria'],
         raw: true
       });
 
-      stats.porCategoria = {
-        aprendiz: 0,
-        companero: 0,
-        maestro: 0,
-        general: 0,
-        administrativo: 0
-      };
-
-      categoriaCounts.forEach(item => {
-        stats.porCategoria[item.categoria] = parseInt(item.count);
-      });
-
-      // Por tipo de archivo
-      const tipoCounts = await Documento.findAll({
-        attributes: [
-          'tipo',
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-        ],
-        where: { activo: true },
-        group: ['tipo'],
-        raw: true
-      });
-
-      stats.porTipo = {};
-      tipoCounts.forEach(item => {
-        stats.porTipo[item.tipo] = parseInt(item.count);
-      });
-
-      // Planchas
-      stats.planchas = {
-        total: await Documento.count({ where: { es_plancha: true, activo: true } }),
-        pendientes: await Documento.count({ where: { es_plancha: true, plancha_estado: 'pendiente', activo: true } }),
-        aprobadas: await Documento.count({ where: { es_plancha: true, plancha_estado: 'aprobada', activo: true } }),
-        rechazadas: await Documento.count({ where: { es_plancha: true, plancha_estado: 'rechazada', activo: true } })
-      };
-
-      // Estadísticas de uso
-      const usoStats = await Documento.findAll({
-        attributes: [
-          [require('sequelize').fn('SUM', require('sequelize').col('descargas')), 'totalDescargas'],
-          [require('sequelize').fn('SUM', require('sequelize').col('visualizaciones')), 'totalVisualizaciones']
-        ],
-        where: { activo: true },
-        raw: true
-      });
-
-      stats.uso = {
-        totalDescargas: parseInt(usoStats[0].totalDescargas) || 0,
-        totalVisualizaciones: parseInt(usoStats[0].totalVisualizaciones) || 0
-      };
-
-      res.json({
+      res.status(200).json({
         success: true,
-        data: stats
+        data: {
+          totalDocumentos,
+          documentosAprobados,
+          documentosPendientes,
+          documentosRechazados,
+          planchasTotal,
+          planchasPendientes,
+          porcentajeAprobados: totalDocumentos > 0 ? ((documentosAprobados / totalDocumentos) * 100).toFixed(1) : 0,
+          distribucionPorCategoria: estadisticasPorCategoria.reduce((acc, item) => {
+            acc[item.categoria] = parseInt(item.total);
+            return acc;
+          }, {})
+        }
       });
 
     } catch (error) {
@@ -471,14 +164,62 @@ const documentosController = {
         message: 'Error interno del servidor'
       });
     }
-  },
+  }
 
-  // Actualizar documento
-  async updateDocumento(req, res) {
+  // GET /api/documentos/:id - Obtener un documento por ID
+  async getDocumentoById(req, res) {
     try {
       const { id } = req.params;
-      
+
+      const documento = await Documento.findByPk(id, {
+        include: [
+          {
+            model: User,
+            as: 'autor',
+            attributes: ['id', 'nombres', 'apellidos', 'grado']
+          }
+        ]
+      });
+
+      if (!documento) {
+        return res.status(404).json({
+          success: false,
+          message: 'Documento no encontrado'
+        });
+      }
+
+      // Verificar permisos de acceso según grado
+      if (!this.canAccessDocument(req.user, documento)) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permisos para ver este documento'
+        });
+      }
+
+      // Incrementar contador de vistas
+      await documento.update({ vistas: documento.vistas + 1 });
+
+      res.status(200).json({
+        success: true,
+        data: documento
+      });
+
+    } catch (error) {
+      logger.error('Error al obtener documento:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // GET /api/documentos/:id/download - Descargar documento
+  async downloadDocumento(req, res) {
+    try {
+      const { id } = req.params;
+
       const documento = await Documento.findByPk(id);
+
       if (!documento) {
         return res.status(404).json({
           success: false,
@@ -487,44 +228,181 @@ const documentosController = {
       }
 
       // Verificar permisos
-      if (!canPerformCRUD(req.user, 'documentos', 'update', documento)) {
+      if (!this.canAccessDocument(req.user, documento)) {
         return res.status(403).json({
           success: false,
-          message: 'No tiene permisos para actualizar este documento'
+          message: 'No tienes permisos para descargar este documento'
         });
       }
 
+      const filePath = path.join(__dirname, '../../uploads', documento.ruta_archivo);
+      
+      try {
+        await fs.access(filePath);
+      } catch {
+        return res.status(404).json({
+          success: false,
+          message: 'Archivo no encontrado en el servidor'
+        });
+      }
+
+      // Incrementar contador de descargas
+      await documento.update({ descargas: documento.descargas + 1 });
+
+      logger.info('Documento descargado', {
+        documentoId: documento.id,
+        usuarioId: req.user.id,
+        nombreArchivo: documento.nombre_archivo
+      });
+
+      res.download(filePath, documento.nombre_archivo);
+
+    } catch (error) {
+      logger.error('Error al descargar documento:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // POST /api/documentos - Subir nuevo documento
+  async uploadDocumento(req, res) {
+    try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: 'Datos de entrada inválidos',
+          message: 'Errores de validación',
           errors: errors.array()
         });
       }
 
-      // Actualizar documento
-      await documento.update({
-        nombre: req.body.nombre || documento.nombre,
-        descripcion: req.body.descripcion !== undefined ? req.body.descripcion : documento.descripcion,
-        categoria: req.body.categoria || documento.categoria,
-        subcategoria: req.body.subcategoria !== undefined ? req.body.subcategoria : documento.subcategoria,
-        palabras_clave: req.body.palabrasClave !== undefined ? req.body.palabrasClave : documento.palabras_clave,
-        plancha_comentarios: req.body.planchaComentarios !== undefined ? req.body.planchaComentarios : documento.plancha_comentarios
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No se ha proporcionado ningún archivo'
+        });
+      }
+
+      const {
+        nombre = req.file.originalname,
+        descripcion = '',
+        categoria = 'general',
+        tipo = 'documento'
+      } = req.body;
+
+      // Verificar permisos para subir documentos de cierta categoría
+      if (!this.canUploadToCategory(req.user, categoria)) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permisos para subir documentos a esta categoría'
+        });
+      }
+
+      const nuevoDocumento = await Documento.create({
+        nombre,
+        descripcion,
+        categoria,
+        tipo,
+        nombre_archivo: req.file.originalname,
+        ruta_archivo: req.file.filename,
+        tamano_archivo: req.file.size,
+        tipo_mime: req.file.mimetype,
+        estado: tipo === 'plancha' ? 'pendiente' : 'aprobado', // Planchas requieren aprobación
+        autor_id: req.user.id,
+        vistas: 0,
+        descargas: 0
       });
 
-      logger.info(`Documento actualizado - ID: ${documento.id}`);
+      logger.info('Documento subido exitosamente', {
+        documentoId: nuevoDocumento.id,
+        autorId: req.user.id,
+        nombreArchivo: req.file.originalname,
+        categoria,
+        tipo
+      });
 
-      res.json({
+      // Si es una plancha, notificar a los maestros para moderación
+      if (tipo === 'plancha') {
+        const io = req.app.get('io');
+        if (io) {
+          io.emit('nueva_plancha_pendiente', {
+            documentoId: nuevoDocumento.id,
+            nombre: nuevoDocumento.nombre,
+            autor: `${req.user.nombres} ${req.user.apellidos}`
+          });
+        }
+      }
+
+      res.status(201).json({
+        success: true,
+        message: 'Documento subido exitosamente',
+        data: nuevoDocumento
+      });
+
+    } catch (error) {
+      logger.error('Error al subir documento:', error);
+      
+      // Si hay error, eliminar el archivo subido
+      if (req.file) {
+        try {
+          await fs.unlink(req.file.path);
+        } catch (unlinkError) {
+          logger.error('Error al eliminar archivo tras fallo:', unlinkError);
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // PUT /api/documentos/:id - Actualizar documento
+  async updateDocumento(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const documento = await Documento.findByPk(id);
+      if (!documento) {
+        return res.status(404).json({
+          success: false,
+          message: 'Documento no encontrado'
+        });
+      }
+
+      // Verificar permisos para modificar
+      if (!this.canModifyDocument(req.user, documento)) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permisos para modificar este documento'
+        });
+      }
+
+      await documento.update(updateData);
+
+      logger.info('Documento actualizado exitosamente', {
+        documentoId: documento.id,
+        actualizadoPor: req.user.id,
+        cambios: Object.keys(updateData)
+      });
+
+      res.status(200).json({
         success: true,
         message: 'Documento actualizado exitosamente',
-        data: {
-          id: documento.id,
-          nombre: documento.nombre,
-          descripcion: documento.descripcion,
-          categoria: documento.categoria,
-          updatedAt: documento.updated_at
-        }
+        data: documento
       });
 
     } catch (error) {
@@ -534,13 +412,13 @@ const documentosController = {
         message: 'Error interno del servidor'
       });
     }
-  },
+  }
 
-  // Eliminar documento
+  // DELETE /api/documentos/:id - Eliminar documento
   async deleteDocumento(req, res) {
     try {
       const { id } = req.params;
-      
+
       const documento = await Documento.findByPk(id);
       if (!documento) {
         return res.status(404).json({
@@ -549,20 +427,41 @@ const documentosController = {
         });
       }
 
-      // Verificar permisos
-      if (!canPerformCRUD(req.user, 'documentos', 'delete', documento)) {
+      // Verificar permisos para eliminar
+      if (!this.canDeleteDocument(req.user, documento)) {
         return res.status(403).json({
           success: false,
-          message: 'No tiene permisos para eliminar este documento'
+          message: 'No tienes permisos para eliminar este documento'
         });
       }
 
-      // Soft delete - marcar como inactivo
-      await documento.update({ activo: false });
+      // Eliminar archivo físico
+      const filePath = path.join(__dirname, '../../uploads', documento.ruta_archivo);
+      try {
+        await fs.unlink(filePath);
+      } catch (fileError) {
+        logger.warn('No se pudo eliminar el archivo físico:', fileError);
+      }
 
-      logger.info(`Documento eliminado (soft delete) - ID: ${documento.id}`);
+      await documento.destroy();
 
-      res.json({
+      logger.info('Documento eliminado exitosamente', {
+        documentoId: id,
+        eliminadoPor: req.user.id,
+        nombreArchivo: documento.nombre_archivo
+      });
+
+      // Notificar via WebSocket
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('documento_eliminado', {
+          documentoId: id,
+          nombre: documento.nombre,
+          eliminadoPor: `${req.user.nombres} ${req.user.apellidos}`
+        });
+      }
+
+      res.status(200).json({
         success: true,
         message: 'Documento eliminado exitosamente'
       });
@@ -574,73 +473,84 @@ const documentosController = {
         message: 'Error interno del servidor'
       });
     }
-  },
+  }
 
-  // Aprobar/rechazar plancha
+  // POST /api/documentos/:id/moderar - Aprobar/rechazar plancha
   async moderarPlancha(req, res) {
     try {
-      const { id } = req.params;
-      const { estado, comentarios } = req.body;
-      
-      // Verificar permisos
-      if (!hasPermission(req.user, 'approve_planchas')) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para moderar planchas'
-        });
-      }
-
-      const documento = await Documento.findByPk(id);
-      if (!documento || !documento.es_plancha) {
-        return res.status(404).json({
-          success: false,
-          message: 'Plancha no encontrada'
-        });
-      }
-
-      if (!['aprobada', 'rechazada'].includes(estado)) {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: 'Estado inválido. Debe ser "aprobada" o "rechazada"'
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const { id } = req.params;
+      const { estado, comentarios = '' } = req.body;
+
+      const documento = await Documento.findByPk(id, {
+        include: [
+          {
+            model: User,
+            as: 'autor',
+            attributes: ['id', 'nombres', 'apellidos', 'email']
+          }
+        ]
+      });
+
+      if (!documento) {
+        return res.status(404).json({
+          success: false,
+          message: 'Documento no encontrado'
+        });
+      }
+
+      if (documento.tipo !== 'plancha') {
+        return res.status(400).json({
+          success: false,
+          message: 'Solo se pueden moderar planchas'
+        });
+      }
+
+      if (documento.estado !== 'pendiente') {
+        return res.status(400).json({
+          success: false,
+          message: 'Esta plancha ya ha sido moderada'
         });
       }
 
       await documento.update({
-        plancha_estado: estado,
-        plancha_comentarios: comentarios
+        estado,
+        comentarios_moderador: comentarios,
+        moderado_por: req.user.id,
+        fecha_moderado: new Date()
       });
 
-      logger.info(`Plancha ${estado} - ID: ${documento.id}, Moderador: ${req.user.username}`);
+      logger.info('Plancha moderada', {
+        documentoId: documento.id,
+        estado,
+        moderadoPor: req.user.id,
+        autorId: documento.autor_id
+      });
 
-      // Notificar al autor
+      // Notificar al autor del resultado
       const io = req.app.get('io');
-      if (io && documento.autor_id) {
-        io.to(`user_${documento.autor_id}`).emit('plancha_moderated', {
-          type: 'plancha_moderated',
-          data: {
-            planchaId: documento.id,
-            nombre: documento.nombre,
-            estado: estado,
-            comentarios: comentarios
-          }
+      if (io) {
+        io.to(`user_${documento.autor_id}`).emit('plancha_moderada', {
+          documentoId: documento.id,
+          nombre: documento.nombre,
+          estado,
+          comentarios,
+          moderadoPor: `${req.user.nombres} ${req.user.apellidos}`
         });
       }
 
-      // Enviar notificación automática
-      try {
-        await NotificationService.notifyPlanchaModerated(documento, estado, comentarios, req.user.id);
-      } catch (notificationError) {
-        logger.warn('Error al enviar notificación de plancha moderada:', notificationError);
-      }
-
-      res.json({
+      res.status(200).json({
         success: true,
         message: `Plancha ${estado} exitosamente`,
-        data: {
-          id: documento.id,
-          estado: estado,
-          comentarios: comentarios
-        }
+        data: documento
       });
 
     } catch (error) {
@@ -651,6 +561,238 @@ const documentosController = {
       });
     }
   }
-};
 
-module.exports = documentosController;
+  // POST /api/documentos/:id/comentario - Agregar comentario a documento
+  async addComentario(req, res) {
+    try {
+      const { id } = req.params;
+      const { comentario } = req.body;
+
+      if (!comentario || comentario.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'El comentario es requerido'
+        });
+      }
+
+      const documento = await Documento.findByPk(id);
+      if (!documento) {
+        return res.status(404).json({
+          success: false,
+          message: 'Documento no encontrado'
+        });
+      }
+
+      // Verificar permisos de acceso
+      if (!this.canAccessDocument(req.user, documento)) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permisos para comentar este documento'
+        });
+      }
+
+      // Obtener comentarios existentes o crear array vacío
+      const comentarios = documento.comentarios || [];
+      const nuevoComentario = {
+        id: Date.now(),
+        usuario: `${req.user.nombres} ${req.user.apellidos}`,
+        usuario_id: req.user.id,
+        comentario: comentario.trim(),
+        fecha: new Date(),
+        grado: req.user.grado
+      };
+
+      comentarios.push(nuevoComentario);
+
+      await documento.update({ comentarios });
+
+      logger.info('Comentario agregado a documento', {
+        documentoId: documento.id,
+        usuarioId: req.user.id,
+        comentarioId: nuevoComentario.id
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Comentario agregado exitosamente',
+        data: nuevoComentario
+      });
+
+    } catch (error) {
+      logger.error('Error al agregar comentario:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // GET /api/documentos/busqueda-avanzada - Búsqueda avanzada
+  async busquedaAvanzada(req, res) {
+    try {
+      const {
+        texto,
+        categoria,
+        tipo,
+        estado,
+        fechaDesde,
+        fechaHasta,
+        autor,
+        tags,
+        page = 1,
+        limit = 10
+      } = req.query;
+
+      const whereConditions = {};
+      const includeConditions = [];
+
+      // Filtro de texto en nombre, descripción y tags
+      if (texto) {
+        whereConditions[Op.or] = [
+          { nombre: { [Op.iLike]: `%${texto}%` } },
+          { descripcion: { [Op.iLike]: `%${texto}%` } }
+        ];
+      }
+
+      // Filtros específicos
+      if (categoria) whereConditions.categoria = categoria;
+      if (tipo) whereConditions.tipo = tipo;
+      if (estado) whereConditions.estado = estado;
+
+      // Filtro de fechas
+      if (fechaDesde || fechaHasta) {
+        whereConditions.created_at = {};
+        if (fechaDesde) whereConditions.created_at[Op.gte] = new Date(fechaDesde);
+        if (fechaHasta) whereConditions.created_at[Op.lte] = new Date(fechaHasta);
+      }
+
+      // Filtro por autor
+      if (autor) {
+        includeConditions.push({
+          model: User,
+          as: 'autor',
+          where: {
+            [Op.or]: [
+              { nombres: { [Op.iLike]: `%${autor}%` } },
+              { apellidos: { [Op.iLike]: `%${autor}%` } }
+            ]
+          }
+        });
+      } else {
+        includeConditions.push({
+          model: User,
+          as: 'autor',
+          attributes: ['id', 'nombres', 'apellidos', 'grado']
+        });
+      }
+
+      // Aplicar restricciones de grado
+      if (req.user.grado === 'aprendiz') {
+        whereConditions.categoria = { [Op.in]: ['aprendiz', 'general'] };
+      } else if (req.user.grado === 'companero') {
+        whereConditions.categoria = { [Op.in]: ['aprendiz', 'companero', 'general'] };
+      }
+
+      const offset = (page - 1) * limit;
+
+      const { count, rows: documentos } = await Documento.findAndCountAll({
+        where: whereConditions,
+        include: includeConditions,
+        order: [['created_at', 'DESC']],
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      });
+
+      const totalPages = Math.ceil(count / limit);
+
+      logger.info('Búsqueda avanzada realizada', {
+        userId: req.user.id,
+        parametros: { texto, categoria, tipo, estado, autor, tags },
+        resultados: count
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          documentos,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages,
+            totalItems: count,
+            itemsPerPage: parseInt(limit),
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+          }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error en búsqueda avanzada:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // Métodos auxiliares para permisos
+  canAccessDocument(user, document) {
+    // SuperAdmin y Admin pueden ver todo
+    if (['superadmin', 'admin'].includes(user.rol)) {
+      return true;
+    }
+
+    // El autor siempre puede ver su documento
+    if (document.autor_id === user.id) {
+      return true;
+    }
+
+    // Verificar acceso por grado
+    const gradoJerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
+    
+    // Si el documento es general, todos pueden verlo
+    if (document.categoria === 'general') {
+      return true;
+    }
+
+    // Solo pueden ver documentos de su grado o menor
+    return gradoJerarquia[user.grado] >= gradoJerarquia[document.categoria];
+  }
+
+  canModifyDocument(user, document) {
+    // SuperAdmin y Admin pueden modificar todo
+    if (['superadmin', 'admin'].includes(user.rol)) {
+      return true;
+    }
+
+    // El autor puede modificar su documento si está pendiente
+    return document.autor_id === user.id && document.estado === 'pendiente';
+  }
+
+  canDeleteDocument(user, document) {
+    // Solo SuperAdmin y Admin pueden eliminar
+    if (['superadmin', 'admin'].includes(user.rol)) {
+      return true;
+    }
+
+    // El autor puede eliminar su documento si está pendiente
+    return document.autor_id === user.id && document.estado === 'pendiente';
+  }
+
+  canUploadToCategory(user, categoria) {
+    // SuperAdmin y Admin pueden subir a cualquier categoría
+    if (['superadmin', 'admin'].includes(user.rol)) {
+      return true;
+    }
+
+    // Todos pueden subir a general
+    if (categoria === 'general') {
+      return true;
+    }
+
+    // Solo pueden subir a su propia categoría de grado
+    return user.grado === categoria;
+  }
+}
+
+module.exports = new DocumentosController();

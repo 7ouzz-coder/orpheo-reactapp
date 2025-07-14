@@ -2,670 +2,532 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    
-    // ===== 1. CREAR TABLA MIEMBROS PRIMERO =====
-    await queryInterface.createTable('miembros', {
+    // Crear tabla de usuarios
+    await queryInterface.createTable('users', {
       id: {
-        type: Sequelize.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        type: Sequelize.INTEGER,
         primaryKey: true,
+        autoIncrement: true
       },
       nombres: {
         type: Sequelize.STRING(100),
-        allowNull: false,
+        allowNull: false
       },
       apellidos: {
         type: Sequelize.STRING(100),
+        allowNull: false
+      },
+      email: {
+        type: Sequelize.STRING(150),
         allowNull: false,
+        unique: true
+      },
+      password: {
+        type: Sequelize.STRING(255),
+        allowNull: false
+      },
+      rol: {
+        type: Sequelize.ENUM('superadmin', 'admin', 'general'),
+        allowNull: false,
+        defaultValue: 'general'
+      },
+      grado: {
+        type: Sequelize.ENUM('aprendiz', 'companero', 'maestro'),
+        allowNull: false,
+        defaultValue: 'aprendiz'
+      },
+      estado: {
+        type: Sequelize.ENUM('activo', 'inactivo', 'suspendido'),
+        allowNull: false,
+        defaultValue: 'activo'
+      },
+      telefono: {
+        type: Sequelize.STRING(20),
+        allowNull: true
+      },
+      fecha_nacimiento: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      ultimo_login: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      intentos_login_fallidos: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+      },
+      cuenta_bloqueada: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      fecha_bloqueo: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      refresh_token: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      fecha_cambio_password: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      avatar_url: {
+        type: Sequelize.STRING(255),
+        allowNull: true
+      },
+      configuraciones: {
+        type: Sequelize.JSONB,
+        allowNull: true,
+        defaultValue: {
+          notificaciones_email: true,
+          notificaciones_push: true,
+          tema: 'dark',
+          idioma: 'es'
+        }
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+      }
+    });
+
+    // Crear tabla de miembros
+    await queryInterface.createTable('miembros', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      nombres: {
+        type: Sequelize.STRING(100),
+        allowNull: false
+      },
+      apellidos: {
+        type: Sequelize.STRING(100),
+        allowNull: false
       },
       rut: {
         type: Sequelize.STRING(12),
         allowNull: false,
-        unique: true,
-      },
-      grado: {
-        type: Sequelize.ENUM('aprendiz', 'companero', 'maestro'),
-        allowNull: false,
-      },
-      cargo: {
-        type: Sequelize.STRING(50),
-        allowNull: true,
-      },
-      vigente: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: true,
+        unique: true
       },
       email: {
-        type: Sequelize.STRING(100),
+        type: Sequelize.STRING(150),
         allowNull: true,
+        unique: true
       },
       telefono: {
         type: Sequelize.STRING(20),
-        allowNull: true,
-      },
-      direccion: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      profesion: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      ocupacion: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      trabajo_nombre: {
-        type: Sequelize.STRING(150),
-        allowNull: true,
-      },
-      trabajo_direccion: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      trabajo_telefono: {
-        type: Sequelize.STRING(20),
-        allowNull: true,
-      },
-      trabajo_email: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      pareja_nombre: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      pareja_telefono: {
-        type: Sequelize.STRING(20),
-        allowNull: true,
-      },
-      contacto_emergencia_nombre: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      contacto_emergencia_telefono: {
-        type: Sequelize.STRING(20),
-        allowNull: true,
-      },
-      fecha_nacimiento: {
-        type: Sequelize.DATEONLY,
-        allowNull: true,
-      },
-      fecha_iniciacion: {
-        type: Sequelize.DATEONLY,
-        allowNull: true,
-      },
-      fecha_aumento_salario: {
-        type: Sequelize.DATEONLY,
-        allowNull: true,
-      },
-      fecha_exaltacion: {
-        type: Sequelize.DATEONLY,
-        allowNull: true,
-      },
-      situacion_salud: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      observaciones: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      created_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.NOW,
-      },
-      updated_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.NOW,
-      }
-    });
-
-    // ===== 2. CREAR TABLA USERS =====
-    await queryInterface.createTable('users', {
-      id: {
-        type: Sequelize.UUID,
-        defaultValue: Sequelize.UUIDV4,
-        primaryKey: true,
-      },
-      username: {
-        type: Sequelize.STRING(50),
-        allowNull: false,
-        unique: true,
-      },
-      email: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-        unique: true,
-      },
-      password: {
-        type: Sequelize.STRING(255),
-        allowNull: false,
-      },
-      role: {
-        type: Sequelize.ENUM('general', 'admin', 'superadmin'),
-        defaultValue: 'general',
-        allowNull: false,
+        allowNull: true
       },
       grado: {
         type: Sequelize.ENUM('aprendiz', 'companero', 'maestro'),
         allowNull: false,
+        defaultValue: 'aprendiz'
       },
-      cargo: {
-        type: Sequelize.STRING(50),
-        allowNull: true,
+      estado: {
+        type: Sequelize.ENUM('activo', 'inactivo', 'suspendido'),
+        allowNull: false,
+        defaultValue: 'activo'
       },
-      member_full_name: {
+      fecha_ingreso: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+      },
+      fecha_nacimiento: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      direccion: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      ciudad_nacimiento: {
         type: Sequelize.STRING(100),
-        allowNull: true,
+        allowNull: true
       },
-      miembro_id: {
-        type: Sequelize.UUID,
+      profesion: {
+        type: Sequelize.STRING(100),
+        allowNull: true
+      },
+      observaciones: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      foto_url: {
+        type: Sequelize.STRING(255),
+        allowNull: true
+      },
+      creado_por: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id'
+        }
+      },
+      actualizado_por: {
+        type: Sequelize.INTEGER,
         allowNull: true,
         references: {
-          model: 'miembros',
+          model: 'users',
           key: 'id'
-        },
-        onDelete: 'SET NULL'
-      },
-      is_active: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: true,
-      },
-      last_login: {
-        type: Sequelize.DATE,
-        allowNull: true,
-      },
-      failed_login_attempts: {
-        type: Sequelize.INTEGER,
-        defaultValue: 0,
-      },
-      locked_until: {
-        type: Sequelize.DATE,
-        allowNull: true,
+        }
       },
       created_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       },
       updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       }
     });
 
-    // ===== 3. CREAR TABLA DOCUMENTOS =====
+    // Crear tabla de documentos
     await queryInterface.createTable('documentos', {
       id: {
-        type: Sequelize.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        type: Sequelize.INTEGER,
         primaryKey: true,
+        autoIncrement: true
       },
       nombre: {
         type: Sequelize.STRING(255),
-        allowNull: false,
-      },
-      tipo: {
-        type: Sequelize.STRING(10),
-        allowNull: false,
+        allowNull: false
       },
       descripcion: {
         type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      tamano: {
-        type: Sequelize.BIGINT,
-        allowNull: true,
-      },
-      url: {
-        type: Sequelize.STRING(500),
-        allowNull: true,
-      },
-      ruta_local: {
-        type: Sequelize.STRING(500),
-        allowNull: true,
-      },
-      hash_archivo: {
-        type: Sequelize.STRING(64),
-        allowNull: true,
+        allowNull: true
       },
       categoria: {
         type: Sequelize.ENUM('aprendiz', 'companero', 'maestro', 'general', 'administrativo'),
         allowNull: false,
+        defaultValue: 'general'
       },
-      subcategoria: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      palabras_clave: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      es_plancha: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false,
-      },
-      plancha_id: {
-        type: Sequelize.STRING(50),
-        allowNull: true,
-      },
-      plancha_estado: {
-        type: Sequelize.ENUM('pendiente', 'aprobada', 'rechazada'),
-        allowNull: true,
-      },
-      plancha_comentarios: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      autor_id: {
-        type: Sequelize.UUID,
-        allowNull: true,
-        references: {
-          model: 'users',
-          key: 'id'
-        },
-        onDelete: 'SET NULL'
-      },
-      autor_nombre: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      subido_por_id: {
-        type: Sequelize.UUID,
+      tipo: {
+        type: Sequelize.ENUM('documento', 'plancha', 'acta', 'reglamento', 'ritual', 'otro'),
         allowNull: false,
-        references: {
-          model: 'users',
-          key: 'id'
-        },
-        onDelete: 'CASCADE'
+        defaultValue: 'documento'
       },
-      subido_por_nombre: {
+      estado: {
+        type: Sequelize.ENUM('pendiente', 'aprobado', 'rechazado'),
+        allowNull: false,
+        defaultValue: 'pendiente'
+      },
+      nombre_archivo: {
+        type: Sequelize.STRING(255),
+        allowNull: false
+      },
+      ruta_archivo: {
+        type: Sequelize.STRING(500),
+        allowNull: false
+      },
+      tamano_archivo: {
+        type: Sequelize.BIGINT,
+        allowNull: false
+      },
+      tipo_mime: {
         type: Sequelize.STRING(100),
-        allowNull: true,
+        allowNull: false
       },
-      version: {
+      vistas: {
         type: Sequelize.INTEGER,
-        defaultValue: 1,
-      },
-      documento_padre_id: {
-        type: Sequelize.UUID,
-        allowNull: true,
-        references: {
-          model: 'documentos',
-          key: 'id'
-        },
-        onDelete: 'SET NULL'
+        allowNull: false,
+        defaultValue: 0
       },
       descargas: {
         type: Sequelize.INTEGER,
-        defaultValue: 0,
+        allowNull: false,
+        defaultValue: 0
       },
-      visualizaciones: {
+      autor_id: {
         type: Sequelize.INTEGER,
-        defaultValue: 0,
-      },
-      activo: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: true,
-      },
-      created_at: {
-        type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        references: {
+          model: 'users',
+          key: 'id'
+        }
       },
-      updated_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.NOW,
-      }
-    });
-
-    // ===== 4. CREAR TABLA PROGRAMAS =====
-    await queryInterface.createTable('programas', {
-      id: {
-        type: Sequelize.UUID,
-        defaultValue: Sequelize.UUIDV4,
-        primaryKey: true,
-      },
-      tema: {
-        type: Sequelize.STRING(255),
-        allowNull: false,
-      },
-      fecha: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      encargado: {
-        type: Sequelize.STRING(100),
-        allowNull: false,
-      },
-      quien_imparte: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      resumen: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      grado: {
-        type: Sequelize.ENUM('aprendiz', 'companero', 'maestro', 'general'),
-        allowNull: false,
-      },
-      tipo: {
-        type: Sequelize.ENUM('tenida', 'instruccion', 'camara', 'trabajo', 'ceremonia', 'reunion'),
-        allowNull: false,
-      },
-      estado: {
-        type: Sequelize.ENUM('pendiente', 'programado', 'completado', 'cancelado'),
-        defaultValue: 'pendiente',
-      },
-      documentos_json: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      responsable_id: {
-        type: Sequelize.UUID,
+      moderado_por: {
+        type: Sequelize.INTEGER,
         allowNull: true,
         references: {
           model: 'users',
           key: 'id'
-        },
-        onDelete: 'SET NULL'
+        }
       },
-      responsable_nombre: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
+      fecha_moderado: {
+        type: Sequelize.DATE,
+        allowNull: true
       },
-      ubicacion: {
-        type: Sequelize.STRING(200),
-        allowNull: true,
-      },
-      detalles_adicionales: {
+      comentarios_moderador: {
         type: Sequelize.TEXT,
-        allowNull: true,
+        allowNull: true
       },
-      requiere_confirmacion: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: true,
-      },
-      limite_asistentes: {
+      version: {
         type: Sequelize.INTEGER,
-        allowNull: true,
+        allowNull: false,
+        defaultValue: 1
       },
-      observaciones: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      activo: {
+      es_confidencial: {
         type: Sequelize.BOOLEAN,
-        defaultValue: true,
+        allowNull: false,
+        defaultValue: false
+      },
+      fecha_expiracion: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      tags: {
+        type: Sequelize.ARRAY(Sequelize.STRING),
+        allowNull: true,
+        defaultValue: []
       },
       created_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       },
       updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       }
     });
 
-    // ===== 5. CREAR TABLA ASISTENCIAS =====
+    // Crear tabla de programas
+    await queryInterface.createTable('programas', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      titulo: {
+        type: Sequelize.STRING(255),
+        allowNull: false
+      },
+      descripcion: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      tipo: {
+        type: Sequelize.ENUM('tenida', 'ceremonia', 'reunion', 'evento', 'taller'),
+        allowNull: false,
+        defaultValue: 'tenida'
+      },
+      grado_requerido: {
+        type: Sequelize.ENUM('aprendiz', 'companero', 'maestro'),
+        allowNull: false,
+        defaultValue: 'aprendiz'
+      },
+      fecha_inicio: {
+        type: Sequelize.DATE,
+        allowNull: false
+      },
+      fecha_fin: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      ubicacion: {
+        type: Sequelize.STRING(255),
+        allowNull: true
+      },
+      estado: {
+        type: Sequelize.ENUM('programado', 'en_curso', 'finalizado', 'cancelado'),
+        allowNull: false,
+        defaultValue: 'programado'
+      },
+      capacidad_maxima: {
+        type: Sequelize.INTEGER,
+        allowNull: true
+      },
+      requiere_confirmacion: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+      },
+      observaciones: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      creado_por: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id'
+        }
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+      }
+    });
+
+    // Crear tabla de asistencias
     await queryInterface.createTable('asistencias', {
       id: {
-        type: Sequelize.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        type: Sequelize.INTEGER,
         primaryKey: true,
+        autoIncrement: true
       },
       programa_id: {
-        type: Sequelize.UUID,
+        type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'programas',
           key: 'id'
-        },
-        onDelete: 'CASCADE'
+        }
       },
       miembro_id: {
-        type: Sequelize.UUID,
+        type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'miembros',
           key: 'id'
-        },
-        onDelete: 'CASCADE'
+        }
       },
-      asistio: {
-        type: Sequelize.BOOLEAN,
+      estado: {
+        type: Sequelize.ENUM('confirmado', 'presente', 'ausente', 'justificado'),
         allowNull: false,
-        defaultValue: false,
+        defaultValue: 'confirmado'
       },
-      confirmado: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false,
-      },
-      justificacion: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      registrado_por_id: {
-        type: Sequelize.UUID,
-        allowNull: true,
-        references: {
-          model: 'users',
-          key: 'id'
-        },
-        onDelete: 'SET NULL'
-      },
-      registrado_por_nombre: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      hora_registro: {
+      fecha_confirmacion: {
         type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.NOW,
-      },
-      hora_llegada: {
-        type: Sequelize.TIME,
-        allowNull: true,
+        allowNull: true
       },
       observaciones: {
         type: Sequelize.TEXT,
-        allowNull: true,
-      },
-      nombre_miembro: {
-        type: Sequelize.STRING(200),
-        allowNull: true,
-      },
-      grado_miembro: {
-        type: Sequelize.STRING(20),
-        allowNull: true,
+        allowNull: true
       },
       created_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       },
       updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       }
     });
 
-    // ===== 6. CREAR TABLA NOTIFICACIONES =====
+    // Crear tabla de notificaciones
     await queryInterface.createTable('notificaciones', {
       id: {
-        type: Sequelize.UUID,
-        defaultValue: Sequelize.UUIDV4,
+        type: Sequelize.INTEGER,
         primaryKey: true,
+        autoIncrement: true
+      },
+      usuario_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id'
+        }
       },
       titulo: {
         type: Sequelize.STRING(255),
-        allowNull: false,
+        allowNull: false
       },
       mensaje: {
         type: Sequelize.TEXT,
-        allowNull: false,
+        allowNull: false
       },
       tipo: {
-        type: Sequelize.ENUM('programa', 'documento', 'miembro', 'administrativo', 'sistema', 'plancha', 'asistencia'),
+        type: Sequelize.ENUM('info', 'warning', 'error', 'success'),
         allowNull: false,
+        defaultValue: 'info'
       },
-      relacionado_tipo: {
-        type: Sequelize.ENUM('programa', 'documento', 'miembro', 'user', 'asistencia'),
-        allowNull: true,
+      categoria: {
+        type: Sequelize.ENUM('sistema', 'documento', 'programa', 'miembro', 'general'),
+        allowNull: false,
+        defaultValue: 'general'
       },
-      relacionado_id: {
-        type: Sequelize.UUID,
-        allowNull: true,
-      },
-      leido: {
+      leida: {
         type: Sequelize.BOOLEAN,
-        defaultValue: false,
-      },
-      leido_at: {
-        type: Sequelize.DATE,
-        allowNull: true,
-      },
-      usuario_id: {
-        type: Sequelize.UUID,
         allowNull: false,
-        references: {
-          model: 'users',
-          key: 'id'
-        },
-        onDelete: 'CASCADE'
+        defaultValue: false
       },
-      grado_destino: {
-        type: Sequelize.ENUM('aprendiz', 'companero', 'maestro', 'todos'),
-        allowNull: true,
-      },
-      remitente_tipo: {
-        type: Sequelize.ENUM('system', 'user', 'admin'),
-        defaultValue: 'system',
-      },
-      remitente_id: {
-        type: Sequelize.UUID,
-        allowNull: true,
-        references: {
-          model: 'users',
-          key: 'id'
-        },
-        onDelete: 'SET NULL'
-      },
-      remitente_nombre: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      prioridad: {
-        type: Sequelize.ENUM('baja', 'normal', 'alta', 'urgente'),
-        defaultValue: 'normal',
-      },
-      expires_at: {
+      fecha_leida: {
         type: Sequelize.DATE,
-        allowNull: true,
+        allowNull: true
       },
-      accion_url: {
-        type: Sequelize.STRING(500),
-        allowNull: true,
-      },
-      accion_texto: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-      },
-      metadatos_json: {
-        type: Sequelize.TEXT,
-        allowNull: true,
+      datos_adicionales: {
+        type: Sequelize.JSONB,
+        allowNull: true
       },
       created_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       },
       updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW,
+        defaultValue: Sequelize.NOW
       }
     });
 
-    // ===== 7. CREAR TODOS LOS ÍNDICES =====
-    
-    // Índices de Miembros
-    await queryInterface.addIndex('miembros', ['rut'], { unique: true });
-    await queryInterface.addIndex('miembros', ['nombres', 'apellidos']);
-    await queryInterface.addIndex('miembros', ['grado']);
-    await queryInterface.addIndex('miembros', ['vigente']);
-    await queryInterface.addIndex('miembros', ['email']);
-
-    // Índices de Users
-    await queryInterface.addIndex('users', ['username'], { unique: true });
+    // Crear índices
     await queryInterface.addIndex('users', ['email'], { unique: true });
-    await queryInterface.addIndex('users', ['role', 'grado']);
-    await queryInterface.addIndex('users', ['is_active']);
-    await queryInterface.addIndex('users', ['miembro_id']);
+    await queryInterface.addIndex('users', ['rol']);
+    await queryInterface.addIndex('users', ['grado']);
+    await queryInterface.addIndex('users', ['estado']);
 
-    // Índices de Documentos
+    await queryInterface.addIndex('miembros', ['rut'], { unique: true });
+    await queryInterface.addIndex('miembros', ['email'], { unique: true });
+    await queryInterface.addIndex('miembros', ['grado']);
+    await queryInterface.addIndex('miembros', ['estado']);
+    await queryInterface.addIndex('miembros', ['nombres', 'apellidos']);
+
+    await queryInterface.addIndex('documentos', ['autor_id']);
     await queryInterface.addIndex('documentos', ['categoria']);
     await queryInterface.addIndex('documentos', ['tipo']);
-    await queryInterface.addIndex('documentos', ['autor_id']);
-    await queryInterface.addIndex('documentos', ['subido_por_id']);
-    await queryInterface.addIndex('documentos', ['activo']);
-    await queryInterface.addIndex('documentos', ['es_plancha']);
-    await queryInterface.addIndex('documentos', ['plancha_estado']);
+    await queryInterface.addIndex('documentos', ['estado']);
     await queryInterface.addIndex('documentos', ['created_at']);
 
-    // Índices de Programas
-    await queryInterface.addIndex('programas', ['fecha']);
-    await queryInterface.addIndex('programas', ['grado']);
+    await queryInterface.addIndex('programas', ['creado_por']);
+    await queryInterface.addIndex('programas', ['fecha_inicio']);
     await queryInterface.addIndex('programas', ['tipo']);
     await queryInterface.addIndex('programas', ['estado']);
-    await queryInterface.addIndex('programas', ['responsable_id']);
-    await queryInterface.addIndex('programas', ['activo']);
 
-    // Índices de Asistencias
     await queryInterface.addIndex('asistencias', ['programa_id']);
     await queryInterface.addIndex('asistencias', ['miembro_id']);
-    await queryInterface.addIndex('asistencias', ['asistio']);
-    await queryInterface.addIndex('asistencias', ['confirmado']);
-    await queryInterface.addIndex('asistencias', ['hora_registro']);
+    await queryInterface.addIndex('asistencias', ['programa_id', 'miembro_id'], { unique: true });
 
-    // Índices de Notificaciones
     await queryInterface.addIndex('notificaciones', ['usuario_id']);
-    await queryInterface.addIndex('notificaciones', ['leido']);
-    await queryInterface.addIndex('notificaciones', ['tipo']);
-    await queryInterface.addIndex('notificaciones', ['prioridad']);
+    await queryInterface.addIndex('notificaciones', ['leida']);
     await queryInterface.addIndex('notificaciones', ['created_at']);
-    await queryInterface.addIndex('notificaciones', ['expires_at']);
-    await queryInterface.addIndex('notificaciones', ['relacionado_tipo', 'relacionado_id']);
-
-    // ===== 8. CONSTRAINTS ÚNICOS =====
-    await queryInterface.addConstraint('asistencias', {
-      fields: ['programa_id', 'miembro_id'],
-      type: 'unique',
-      name: 'asistencias_programa_miembro_unique'
-    });
-
-    console.log('✅ Todas las tablas, índices y constraints creados exitosamente');
   },
 
   async down(queryInterface, Sequelize) {
-    // Eliminar en orden inverso para respetar las foreign keys
+    // Eliminar tablas en orden inverso (respetando las dependencias)
     await queryInterface.dropTable('notificaciones');
     await queryInterface.dropTable('asistencias');
     await queryInterface.dropTable('programas');
     await queryInterface.dropTable('documentos');
-    await queryInterface.dropTable('users');
     await queryInterface.dropTable('miembros');
-    
-    console.log('✅ Todas las tablas eliminadas exitosamente');
+    await queryInterface.dropTable('users');
   }
 };
