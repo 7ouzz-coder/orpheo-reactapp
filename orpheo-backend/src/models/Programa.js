@@ -1,213 +1,161 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-
-const Programa = sequelize.define('Programa', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-  },
-  tema: {
-    type: DataTypes.STRING(255),
-    allowNull: false,
-    validate: {
-      notEmpty: true,
-      len: [3, 255]
-    }
-  },
-  fecha: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    validate: {
-      isDate: true,
-      // ✅ CORREGIDO: Validación de fecha futura comentada para seeders
-      // isAfter: {
-      //   args: new Date().toISOString().split('T')[0],
-      //   msg: 'La fecha debe ser futura'
-      // }
-    }
-  },
-  encargado: {
-    type: DataTypes.STRING(100),
-    allowNull: false,
-    validate: {
-      notEmpty: true,
-      len: [2, 100]
-    }
-  },
-  quien_imparte: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
-  },
-  resumen: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  
-  // Clasificación
-  grado: {
-    type: DataTypes.ENUM('aprendiz', 'companero', 'maestro', 'general'),
-    allowNull: false,
-  },
-  tipo: {
-    type: DataTypes.ENUM('tenida', 'instruccion', 'camara', 'trabajo', 'ceremonia', 'reunion'),
-    allowNull: false,
-  },
-  estado: {
-    type: DataTypes.ENUM('pendiente', 'programado', 'completado', 'cancelado'),
-    defaultValue: 'pendiente',
-  },
-  
-  // Items relacionados
-  documentos_json: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    comment: 'JSON con IDs de documentos relacionados'
-  },
-  
-  // Responsable - ✅ CORREGIDO: UUID en lugar de INTEGER
-  responsable_id: {
-    type: DataTypes.UUID,
-    allowNull: true,
-    references: {
-      model: 'users',
-      key: 'id'
-    }
-  },
-  responsable_nombre: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
-  },
-  
-  // Ubicación y detalles
-  ubicacion: {
-    type: DataTypes.STRING(200),
-    allowNull: true,
-  },
-  detalles_adicionales: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  
-  // Control de asistencia
-  requiere_confirmacion: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true,
-  },
-  limite_asistentes: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    validate: {
-      min: 1
-    }
-  },
-  
-  // Metadatos
-  observaciones: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  activo: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true,
-  }
-}, {
-  tableName: 'programas',
-  indexes: [
-    {
-      fields: ['fecha']
+module.exports = (sequelize, DataTypes) => {
+  const Programa = sequelize.define('Programa', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
     },
-    {
-      fields: ['grado']
+    tema: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: {
+        notEmpty: true,
+        len: [3, 255]
+      }
     },
-    {
-      fields: ['tipo']
+    fecha: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      validate: {
+        isDate: true,
+        isAfter: new Date().toISOString().split('T')[0]
+      }
     },
-    {
-      fields: ['estado']
+    encargado: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: {
+        notEmpty: true,
+        len: [2, 100]
+      }
     },
-    {
-      fields: ['responsable_id']
+    quien_imparte: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      validate: {
+        len: [0, 100]
+      }
     },
-    {
-      fields: ['activo']
+    resumen: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      validate: {
+        len: [0, 1000]
+      }
+    },
+    grado: {
+      type: DataTypes.ENUM('aprendiz', 'companero', 'maestro', 'general'),
+      allowNull: false,
+      defaultValue: 'general'
+    },
+    tipo: {
+      type: DataTypes.ENUM('tenida', 'instruccion', 'camara', 'trabajo', 'ceremonia', 'reunion'),
+      allowNull: false,
+      defaultValue: 'tenida'
+    },
+    estado: {
+      type: DataTypes.ENUM('pendiente', 'programado', 'completado', 'cancelado'),
+      allowNull: false,
+      defaultValue: 'programado'
+    },
+    ubicacion: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+      validate: {
+        len: [0, 200]
+      }
+    },
+    detalles_adicionales: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      validate: {
+        len: [0, 1000]
+      }
+    },
+    requiere_confirmacion: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    limite_asistentes: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      validate: {
+        min: 1
+      }
+    },
+    observaciones: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      validate: {
+        len: [0, 1000]
+      }
+    },
+    responsable_id: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    responsable_nombre: {
+      type: DataTypes.STRING(200),
+      allowNull: false
     }
-  ]
-});
-
-// Métodos de instancia
-Programa.prototype.esFuturo = function() {
-  return this.fecha > new Date();
-};
-
-Programa.prototype.esPasado = function() {
-  return this.fecha < new Date();
-};
-
-Programa.prototype.getDiasRestantes = function() {
-  if (!this.esFuturo()) return 0;
-  
-  const diffTime = this.fecha - new Date();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-};
-
-Programa.prototype.getDocumentosRelacionados = function() {
-  if (!this.documentos_json) return [];
-  
-  try {
-    return JSON.parse(this.documentos_json);
-  } catch (error) {
-    return [];
-  }
-};
-
-Programa.prototype.setDocumentosRelacionados = function(documentos) {
-  this.documentos_json = JSON.stringify(documentos);
-};
-
-// Métodos estáticos
-Programa.findByGrado = function(grado) {
-  return this.findAll({
-    where: { grado, activo: true },
-    order: [['fecha', 'ASC']]
-  });
-};
-
-Programa.findProximos = function(limit = 10) {
-  return this.findAll({
-    where: {
-      fecha: { [sequelize.Sequelize.Op.gt]: new Date() },
-      activo: true
-    },
-    order: [['fecha', 'ASC']],
-    limit
-  });
-};
-
-Programa.findByDateRange = function(startDate, endDate) {
-  return this.findAll({
-    where: {
-      fecha: {
-        [sequelize.Sequelize.Op.between]: [startDate, endDate]
+  }, {
+    tableName: 'programas',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+      {
+        fields: ['fecha']
       },
-      activo: true
-    },
-    order: [['fecha', 'ASC']]
+      {
+        fields: ['grado']
+      },
+      {
+        fields: ['tipo']
+      },
+      {
+        fields: ['estado']
+      },
+      {
+        fields: ['responsable_id']
+      }
+    ]
   });
+
+  // Métodos de instancia
+  Programa.prototype.puedeSerEditado = function() {
+    return this.estado === 'programado' || this.estado === 'pendiente';
+  };
+
+  Programa.prototype.esFuturo = function() {
+    return new Date(this.fecha) > new Date();
+  };
+
+  // Métodos estáticos
+  Programa.getPorGrado = function(grado) {
+    return this.findAll({
+      where: { grado: grado === 'general' ? ['general'] : [grado, 'general'] },
+      order: [['fecha', 'ASC']]
+    });
+  };
+
+  Programa.getProximos = function(limit = 5) {
+    return this.findAll({
+      where: {
+        fecha: {
+          [require('sequelize').Op.gte]: new Date()
+        },
+        estado: ['programado', 'pendiente']
+      },
+      order: [['fecha', 'ASC']],
+      limit
+    });
+  };
+
+  return Programa;
 };
-
-// Hooks corregidos
-Programa.addHook('beforeSave', (programa) => {
-  // Solo actualizar estado automáticamente en actualizaciones, no en creación
-  if (!programa.isNewRecord) {
-    const now = new Date();
-    const programaDate = new Date(programa.fecha);
-    
-    if (programaDate < now && programa.estado === 'programado') {
-      programa.estado = 'completado';
-    }
-  }
-});
-
-module.exports = Programa;

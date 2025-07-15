@@ -1,11 +1,9 @@
-const bcrypt = require('bcrypt');
-
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
-      autoIncrement: true
     },
     nombres: {
       type: DataTypes.STRING(100),
@@ -24,11 +22,12 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     email: {
-      type: DataTypes.STRING(150),
+      type: DataTypes.STRING(255),
       allowNull: false,
       unique: true,
       validate: {
-        isEmail: true
+        isEmail: true,
+        notEmpty: true
       }
     },
     password: {
@@ -39,6 +38,8 @@ module.exports = (sequelize, DataTypes) => {
         len: [8, 255]
       }
     },
+    
+    // Información masónica
     rol: {
       type: DataTypes.ENUM('superadmin', 'admin', 'general'),
       allowNull: false,
@@ -49,10 +50,41 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'aprendiz'
     },
+    
+    // Estado de la cuenta
     estado: {
       type: DataTypes.ENUM('activo', 'inactivo', 'suspendido'),
       allowNull: false,
       defaultValue: 'activo'
+    },
+    
+    // Seguridad
+    intentos_fallidos: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
+    },
+    cuenta_bloqueada: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    bloqueada_hasta: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    
+    // Tokens
+    refresh_token: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    
+    // Información adicional
+    avatar: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      validate: {
+        isUrl: true
+      }
     },
     telefono: {
       type: DataTypes.STRING(20),
@@ -61,62 +93,75 @@ module.exports = (sequelize, DataTypes) => {
         is: /^[+]?[0-9\s\-\(\)]+$/
       }
     },
-    fecha_nacimiento: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      validate: {
-        isDate: true,
-        isBefore: new Date().toISOString()
-      }
-    },
-    ultimo_login: {
+    
+    // Timestamps de actividad
+    ultimo_acceso: {
       type: DataTypes.DATE,
       allowNull: true
     },
-    intentos_login_fallidos: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0
-      }
+    password_changed_at: {
+      type: DataTypes.DATE,
+      allowNull: true
     },
-    cuenta_bloqueada: {
+    
+    // Información de verificación
+    email_verified: {
       type: DataTypes.BOOLEAN,
-      allowNull: false,
       defaultValue: false
     },
-    fecha_bloqueo: {
+    email_verified_at: {
       type: DataTypes.DATE,
       allowNull: true
     },
-    refresh_token: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    fecha_cambio_password: {
-      type: DataTypes.DATE,
-      allowNull: true
-    },
-    avatar_url: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      validate: {
-        isUrl: true
-      }
-    },
+    
+    // Configuraciones de usuario
     configuraciones: {
       type: DataTypes.JSONB,
       allowNull: true,
       defaultValue: {
-        notificaciones_email: true,
-        notificaciones_push: true,
-        tema: 'dark',
-        idioma: 'es'
+        notificaciones: {
+          email: true,
+          push: true,
+          programas: true,
+          documentos: true,
+          miembros: true
+        },
+        privacidad: {
+          mostrar_email: false,
+          mostrar_telefono: false
+        },
+        interfaz: {
+          tema: 'oscuro',
+          idioma: 'es'
+        }
+      }
+    },
+    
+    // Información de auditoría
+    created_by: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    updated_by: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
       }
     }
   }, {
     tableName: 'users',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    
+    // Índices
     indexes: [
       {
         unique: true,
@@ -132,59 +177,33 @@ module.exports = (sequelize, DataTypes) => {
         fields: ['estado']
       },
       {
-        fields: ['ultimo_login']
+        fields: ['created_at']
       }
     ],
+    
+    // Hooks
     hooks: {
-      beforeValidate: (user) => {
-        // Normalizar email
-        if (user.email) {
-          user.email = user.email.toLowerCase().trim();
-        }
-        
-        // Capitalizar nombres y apellidos
-        if (user.nombres) {
-          user.nombres = user.nombres.trim().replace(/\w\S*/g, (txt) => 
-            txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
-          );
-        }
-        
-        if (user.apellidos) {
-          user.apellidos = user.apellidos.trim().replace(/\w\S*/g, (txt) => 
-            txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
-          );
-        }
+      beforeCreate: (user) => {
+        user.email = user.email.toLowerCase();
       },
-      
-      beforeCreate: async (user) => {
-        if (user.password) {
-          const saltRounds = 12;
-          user.password = await bcrypt.hash(user.password, saltRounds);
-        }
-      },
-      
-      beforeUpdate: async (user) => {
-        // Solo hashear si la contraseña cambió
-        if (user.changed('password')) {
-          const saltRounds = 12;
-          user.password = await bcrypt.hash(user.password, saltRounds);
+      beforeUpdate: (user) => {
+        if (user.changed('email')) {
+          user.email = user.email.toLowerCase();
         }
       }
     }
   });
 
   // Métodos de instancia
+  User.prototype.toJSON = function() {
+    const values = Object.assign({}, this.get());
+    delete values.password;
+    delete values.refresh_token;
+    return values;
+  };
+
   User.prototype.getNombreCompleto = function() {
     return `${this.nombres} ${this.apellidos}`;
-  };
-
-  User.prototype.verificarPassword = async function(password) {
-    return await bcrypt.compare(password, this.password);
-  };
-
-  User.prototype.puedeAccederGrado = function(grado) {
-    const jerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
-    return jerarquia[this.grado] >= jerarquia[grado];
   };
 
   User.prototype.esAdmin = function() {
@@ -195,92 +214,109 @@ module.exports = (sequelize, DataTypes) => {
     return this.rol === 'superadmin';
   };
 
-  User.prototype.tienePermiso = function(permiso) {
-    // Implementar lógica de permisos según rol y grado
-    const permisosPorRol = {
-      superadmin: ['*'], // Todos los permisos
-      admin: ['manage_members', 'manage_documents', 'approve_planchas'],
-      general: ['view_documents', 'upload_documents']
-    };
-
-    const permisosPorGrado = {
-      maestro: ['approve_planchas', 'moderate_content'],
-      companero: ['view_companero_content'],
-      aprendiz: ['view_aprendiz_content']
-    };
-
-    const permisosRol = permisosPorRol[this.rol] || [];
-    const permisosGrado = permisosPorGrado[this.grado] || [];
-
-    return permisosRol.includes('*') || 
-           permisosRol.includes(permiso) || 
-           permisosGrado.includes(permiso);
+  User.prototype.puedeAccederGrado = function(grado) {
+    const jerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
+    return jerarquia[this.grado] >= jerarquia[grado];
   };
 
-  User.prototype.toJSON = function() {
-    const values = { ...this.get() };
-    delete values.password;
-    delete values.refresh_token;
-    return values;
+  User.prototype.actualizarUltimoAcceso = function() {
+    return this.update({ ultimo_acceso: new Date() });
+  };
+
+  User.prototype.isAccountLocked = function() {
+    if (!this.cuenta_bloqueada) return false;
+    if (!this.bloqueada_hasta) return true;
+    return new Date() < this.bloqueada_hasta;
+  };
+
+  User.prototype.unlockAccount = function() {
+    return this.update({
+      cuenta_bloqueada: false,
+      bloqueada_hasta: null,
+      intentos_fallidos: 0
+    });
   };
 
   // Métodos estáticos
-  User.buscarPorEmail = function(email) {
+  User.findByEmail = function(email) {
     return this.findOne({
       where: { email: email.toLowerCase() }
     });
   };
 
-  User.obtenerAdministradores = function() {
+  User.findActiveUsers = function() {
+    return this.findAll({
+      where: { estado: 'activo' },
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
+    });
+  };
+
+  User.findByRol = function(rol) {
+    return this.findAll({
+      where: { rol },
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
+    });
+  };
+
+  User.findByGrado = function(grado) {
+    return this.findAll({
+      where: { grado },
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
+    });
+  };
+
+  User.getAdmins = function() {
     return this.findAll({
       where: { 
         rol: ['admin', 'superadmin'],
         estado: 'activo'
       },
-      order: [['nombres', 'ASC']]
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
     });
   };
 
-  User.obtenerPorGrado = function(grado) {
+  User.countByRol = function() {
     return this.findAll({
-      where: { 
-        grado,
-        estado: 'activo'
-      },
-      order: [['nombres', 'ASC']]
+      attributes: [
+        'rol',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['rol'],
+      raw: true
     });
   };
 
-  User.obtenerMaestros = function() {
+  User.countByGrado = function() {
     return this.findAll({
-      where: { 
-        grado: 'maestro',
-        estado: 'activo'
-      },
-      order: [['nombres', 'ASC']]
+      attributes: [
+        'grado',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['grado'],
+      raw: true
     });
   };
 
-  User.bloquearCuenta = async function(userId, razon = 'Múltiples intentos fallidos') {
-    return await this.update(
-      { 
-        cuenta_bloqueada: true,
-        fecha_bloqueo: new Date(),
-        refresh_token: null
-      },
-      { where: { id: userId } }
-    );
+  User.getRecentUsers = function(limit = 10) {
+    return this.findAll({
+      limit,
+      order: [['created_at', 'DESC']],
+      attributes: ['id', 'nombres', 'apellidos', 'email', 'rol', 'grado', 'created_at']
+    });
   };
 
-  User.desbloquearCuenta = async function(userId) {
-    return await this.update(
-      { 
-        cuenta_bloqueada: false,
-        fecha_bloqueo: null,
-        intentos_login_fallidos: 0
+  User.searchUsers = function(query) {
+    const { Op } = require('sequelize');
+    return this.findAll({
+      where: {
+        [Op.or]: [
+          { nombres: { [Op.iLike]: `%${query}%` } },
+          { apellidos: { [Op.iLike]: `%${query}%` } },
+          { email: { [Op.iLike]: `%${query}%` } }
+        ]
       },
-      { where: { id: userId } }
-    );
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
+    });
   };
 
   return User;

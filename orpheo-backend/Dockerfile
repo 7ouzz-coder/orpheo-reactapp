@@ -1,36 +1,25 @@
 FROM node:18-alpine
 
-# Información del mantenedor
-LABEL maintainer="Guillermo1858@gmail.com"
-LABEL description="Orpheo Backend API"
-
 # Instalar dependencias del sistema
-RUN apk --no-cache add \
-    postgresql-client \
-    curl
+RUN apk --no-cache add curl postgresql-client bash
 
 # Crear usuario no-root
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodeuser -u 1001
+RUN addgroup -g 1001 -S nodejs && adduser -S nodeuser -u 1001
 
-# Configurar directorio de trabajo
+# Directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias
+# Copiar package.json
 COPY package*.json ./
 
 # Instalar dependencias
 RUN npm ci --only=production && npm cache clean --force
 
-# Cambiar propietario de node_modules
-RUN chown -R nodeuser:nodejs /app/node_modules
+# Crear directorios y permisos
+RUN mkdir -p uploads logs && chown -R nodeuser:nodejs /app
 
 # Copiar código fuente
 COPY --chown=nodeuser:nodejs . .
-
-# Crear directorios necesarios
-RUN mkdir -p logs uploads && \
-    chown -R nodeuser:nodejs logs uploads
 
 # Cambiar a usuario no-root
 USER nodeuser
@@ -39,7 +28,7 @@ USER nodeuser
 EXPOSE 3001
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1
 
 # Comando por defecto

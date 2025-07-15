@@ -5,14 +5,14 @@ const { User } = require('../models');
 const logger = require('../utils/logger');
 
 class AuthController {
-  // POST /api/auth/login - Iniciar sesión
+  // Iniciar sesión
   async login(req, res) {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: 'Errores de validación',
+          message: 'Datos de entrada inválidos',
           errors: errors.array()
         });
       }
@@ -25,48 +25,67 @@ class AuthController {
       });
 
       if (!user) {
-        logger.warn('Intento de login con email inexistente', { email });
+        logger.security('Intento de login con email no existente', {
+          email,
+          ip: req.ip,
+          userAgent: req.get('User-Agent')
+        });
+
         return res.status(401).json({
           success: false,
           message: 'Credenciales inválidas'
         });
       }
 
-      // Verificar si la cuenta está bloqueada
-      if (user.cuenta_bloqueada) {
-        logger.warn('Intento de login en cuenta bloqueada', { 
-          userId: user.id, 
-          email 
+      // Verificar si la cuenta está activa
+      if (user.estado !== 'activo') {
+        logger.security('Intento de login con cuenta inactiva', {
+          userId: user.id,
+          email: user.email,
+          estado: user.estado,
+          ip: req.ip
         });
+
         return res.status(423).json({
           success: false,
-          message: 'Cuenta bloqueada. Contacta al administrador.'
+          message: 'Cuenta inactiva'
+        });
+      }
+
+      // Verificar si la cuenta está bloqueada
+      if (user.cuenta_bloqueada) {
+        logger.security('Intento de login con cuenta bloqueada', {
+          userId: user.id,
+          email: user.email,
+          ip: req.ip
+        });
+
+        return res.status(423).json({
+          success: false,
+          message: 'Cuenta bloqueada. Contacte al administrador.'
         });
       }
 
       // Verificar contraseña
-      const passwordValida = await bcrypt.compare(password, user.password);
-      
-      if (!passwordValida) {
+      const isValidPassword = await bcrypt.compare(password, user.password);
+
+      if (!isValidPassword) {
         // Incrementar intentos fallidos
-        await user.increment('intentos_login_fallidos');
+        await user.increment('intentos_fallidos');
         
         // Bloquear cuenta si excede el límite
-        if (user.intentos_login_fallidos >= 4) { // 5 intentos total
+        if (user.intentos_fallidos >= 4) {
           await user.update({ 
             cuenta_bloqueada: true,
-            fecha_bloqueo: new Date()
-          });
-          logger.warn('Cuenta bloqueada por múltiples intentos fallidos', {
-            userId: user.id,
-            email
+            bloqueada_hasta: new Date(Date.now() + 30 * 60 * 1000) // 30 minutos
           });
         }
 
-        logger.warn('Intento de login con contraseña incorrecta', { 
-          userId: user.id, 
-          email,
-          intentos: user.intentos_login_fallidos + 1
+        logger.security('Intento de login con contraseña incorrecta', {
+          userId: user.id,
+          email: user.email,
+          intentos: user.intentos_fallidos + 1,
+          ip: req.ip
         });
 
         return res.status(401).json({
@@ -76,46 +95,59 @@ class AuthController {
       }
 
       // Login exitoso - resetear intentos fallidos
-      if (user.intentos_login_fallidos > 0) {
-        await user.update({ 
-          intentos_login_fallidos: 0,
-          ultimo_login: new Date()
-        });
-      } else {
-        await user.update({ ultimo_login: new Date() });
-      }
+      await user.update({ 
+        intentos_fallidos: 0,
+        cuenta_bloqueada: false,
+        bloqueada_hasta: null,
+        ultimo_acceso: new Date()
+      });
 
       // Generar tokens
-      const accessToken = this.generateAccessToken(user);
-      const refreshToken = this.generateRefreshToken(user);
-
-      // Guardar refresh token en base de datos
-      await user.update({ refresh_token: refreshToken });
-
-      logger.info('Login exitoso', {
+      const tokenPayload = {
         userId: user.id,
         email: user.email,
         rol: user.rol,
         grado: user.grado
-      });
+      };
 
-      // Respuesta sin incluir datos sensibles
-      const userData = {
-        id: user.id,
-        nombres: user.nombres,
-        apellidos: user.apellidos,
+      const accessToken = jwt.sign(
+        tokenPayload,
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRY || '1h' }
+      );
+
+      const refreshToken = jwt.sign(
+        { userId: user.id },
+        process.env.REFRESH_TOKEN_SECRET,
+        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '30d' }
+      );
+
+      // Guardar refresh token en base de datos
+      await user.update({ refresh_token: refreshToken });
+
+      logger.audit('Usuario autenticado exitosamente', {
+        userId: user.id,
         email: user.email,
         rol: user.rol,
         grado: user.grado,
-        estado: user.estado,
-        ultimo_login: user.ultimo_login
-      };
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
+      });
 
-      res.status(200).json({
+      res.json({
         success: true,
-        message: 'Login exitoso',
+        message: 'Autenticación exitosa',
         data: {
-          user: userData,
+          user: {
+            id: user.id,
+            nombres: user.nombres,
+            apellidos: user.apellidos,
+            email: user.email,
+            rol: user.rol,
+            grado: user.grado,
+            avatar: user.avatar,
+            estado: user.estado
+          },
           accessToken,
           refreshToken
         }
@@ -130,7 +162,7 @@ class AuthController {
     }
   }
 
-  // POST /api/auth/refresh - Renovar token de acceso
+  // Renovar token de acceso
   async refreshToken(req, res) {
     try {
       const { refreshToken } = req.body;
@@ -145,7 +177,7 @@ class AuthController {
       // Verificar refresh token
       let decoded;
       try {
-        decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+        decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
       } catch (error) {
         return res.status(401).json({
           success: false,
@@ -153,7 +185,7 @@ class AuthController {
         });
       }
 
-      // Buscar usuario y verificar que el refresh token coincida
+      // Buscar usuario y verificar refresh token
       const user = await User.findOne({
         where: { 
           id: decoded.userId,
@@ -168,8 +200,8 @@ class AuthController {
         });
       }
 
-      // Verificar estado de cuenta
-      if (user.cuenta_bloqueada || user.estado !== 'activo') {
+      // Verificar estado del usuario
+      if (user.estado !== 'activo') {
         return res.status(423).json({
           success: false,
           message: 'Cuenta inactiva'
@@ -177,22 +209,28 @@ class AuthController {
       }
 
       // Generar nuevo access token
-      const newAccessToken = this.generateAccessToken(user);
-
-      logger.info('Token renovado exitosamente', {
+      const tokenPayload = {
         userId: user.id,
-        email: user.email
-      });
+        email: user.email,
+        rol: user.rol,
+        grado: user.grado
+      };
 
-      res.status(200).json({
+      const accessToken = jwt.sign(
+        tokenPayload,
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRY || '1h' }
+      );
+
+      res.json({
         success: true,
         data: {
-          accessToken: newAccessToken
+          accessToken
         }
       });
 
     } catch (error) {
-      logger.error('Error en refresh token:', error);
+      logger.error('Error al renovar token:', error);
       res.status(500).json({
         success: false,
         message: 'Error interno del servidor'
@@ -200,34 +238,7 @@ class AuthController {
     }
   }
 
-  // POST /api/auth/logout - Cerrar sesión
-  async logout(req, res) {
-    try {
-      const userId = req.user.id;
-
-      // Invalidar refresh token
-      await User.update(
-        { refresh_token: null },
-        { where: { id: userId } }
-      );
-
-      logger.info('Logout exitoso', { userId });
-
-      res.status(200).json({
-        success: true,
-        message: 'Sesión cerrada exitosamente'
-      });
-
-    } catch (error) {
-      logger.error('Error en logout:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  }
-
-  // GET /api/auth/me - Obtener información del usuario actual
+  // Obtener usuario actual
   async getCurrentUser(req, res) {
     try {
       const user = await User.findByPk(req.user.id, {
@@ -241,9 +252,22 @@ class AuthController {
         });
       }
 
-      res.status(200).json({
+      res.json({
         success: true,
-        data: user
+        data: {
+          user: {
+            id: user.id,
+            nombres: user.nombres,
+            apellidos: user.apellidos,
+            email: user.email,
+            rol: user.rol,
+            grado: user.grado,
+            avatar: user.avatar,
+            estado: user.estado,
+            created_at: user.created_at,
+            updated_at: user.updated_at
+          }
+        }
       });
 
     } catch (error) {
@@ -255,22 +279,52 @@ class AuthController {
     }
   }
 
-  // POST /api/auth/change-password - Cambiar contraseña
+  // Cerrar sesión
+  async logout(req, res) {
+    try {
+      // Limpiar refresh token
+      await User.update(
+        { refresh_token: null },
+        { where: { id: req.user.id } }
+      );
+
+      logger.audit('Usuario cerró sesión', {
+        userId: req.user.id,
+        email: req.user.email,
+        ip: req.ip
+      });
+
+      res.json({
+        success: true,
+        message: 'Sesión cerrada exitosamente'
+      });
+
+    } catch (error) {
+      logger.error('Error al cerrar sesión:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // Cambiar contraseña
   async changePassword(req, res) {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: 'Errores de validación',
+          message: 'Datos de entrada inválidos',
           errors: errors.array()
         });
       }
 
       const { currentPassword, newPassword } = req.body;
-      const userId = req.user.id;
 
-      const user = await User.findByPk(userId);
+      // Buscar usuario
+      const user = await User.findByPk(req.user.id);
+
       if (!user) {
         return res.status(404).json({
           success: false,
@@ -279,33 +333,50 @@ class AuthController {
       }
 
       // Verificar contraseña actual
-      const passwordValida = await bcrypt.compare(currentPassword, user.password);
-      if (!passwordValida) {
-        return res.status(400).json({
+      const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+
+      if (!isValidPassword) {
+        logger.security('Intento de cambio de contraseña con contraseña actual incorrecta', {
+          userId: user.id,
+          email: user.email,
+          ip: req.ip
+        });
+
+        return res.status(401).json({
           success: false,
           message: 'Contraseña actual incorrecta'
         });
       }
 
-      // Encriptar nueva contraseña
-      const saltRounds = 12;
-      const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+      // Verificar que la nueva contraseña no sea igual a la actual
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
 
-      // Actualizar contraseña e invalidar refresh tokens
-      await user.update({
+      if (isSamePassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'La nueva contraseña debe ser diferente a la actual'
+        });
+      }
+
+      // Hashear nueva contraseña
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      // Actualizar contraseña
+      await user.update({ 
         password: hashedPassword,
-        refresh_token: null,
-        fecha_cambio_password: new Date()
+        password_changed_at: new Date(),
+        refresh_token: null // Invalidar refresh token
       });
 
-      logger.info('Contraseña cambiada exitosamente', {
+      logger.audit('Contraseña cambiada', {
         userId: user.id,
-        email: user.email
+        email: user.email,
+        ip: req.ip
       });
 
-      res.status(200).json({
+      res.json({
         success: true,
-        message: 'Contraseña cambiada exitosamente. Por favor, inicia sesión nuevamente.'
+        message: 'Contraseña cambiada exitosamente'
       });
 
     } catch (error) {
@@ -315,39 +386,6 @@ class AuthController {
         message: 'Error interno del servidor'
       });
     }
-  }
-
-  // Métodos auxiliares para generar tokens
-  generateAccessToken(user) {
-    return jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        rol: user.rol,
-        grado: user.grado
-      },
-      process.env.JWT_SECRET,
-      { 
-        expiresIn: process.env.JWT_EXPIRES_IN || '15m',
-        issuer: 'orpheo-api',
-        audience: 'orpheo-frontend'
-      }
-    );
-  }
-
-  generateRefreshToken(user) {
-    return jwt.sign(
-      {
-        userId: user.id,
-        type: 'refresh'
-      },
-      process.env.JWT_REFRESH_SECRET,
-      { 
-        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-        issuer: 'orpheo-api',
-        audience: 'orpheo-frontend'
-      }
-    );
   }
 }
 
