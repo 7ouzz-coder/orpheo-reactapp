@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 
 // ✅ Tu IP configurada
-const YOUR_IP = '192.168.195.117';
+const YOUR_IP = '192.168.1.14';
 
 // ✅ Función para obtener la IP del host automáticamente
 const getHostIP = () => {
@@ -16,8 +16,8 @@ const getHostIP = () => {
 
 const ENV = {
   // Para desarrollo local
-  API_URL: 'http://192.168.195.117:3001/api',
-  WEBSOCKET_URL: 'http://192.168.195.117:3001',
+  API_URL: 'http://192.168.1.14:3001/api',
+  WEBSOCKET_URL: 'http://192.168.1.14:3001',
 
   development: {
     API_URL: __DEV__ 

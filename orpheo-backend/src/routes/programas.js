@@ -2,7 +2,8 @@ const express = require('express');
 const { body, param, query } = require('express-validator');
 const programasController = require('../controllers/programasController');
 const authMiddleware = require('../middleware/auth');
-const permissionsMiddleware = require('../middleware/permissions');
+const { permissionsMiddleware } = require('../middleware/permissions');
+
 
 const router = express.Router();
 

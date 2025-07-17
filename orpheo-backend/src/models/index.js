@@ -21,12 +21,6 @@ const config = {
     underscored: true,
     freezeTableName: true,
   },
-  dialectOptions: {
-    ssl: process.env.NODE_ENV === 'production' ? {
-      require: true,
-      rejectUnauthorized: false
-    } : false,
-  },
   timezone: 'America/Santiago',
 };
 
@@ -38,7 +32,7 @@ const sequelize = new Sequelize(
   config
 );
 
-// Importar modelos (ajustar según los que tengas)
+// Importar modelos
 const User = require('./User')(sequelize, Sequelize.DataTypes);
 const Miembro = require('./Miembro')(sequelize, Sequelize.DataTypes);
 const Documento = require('./Documento')(sequelize, Sequelize.DataTypes);
@@ -95,15 +89,34 @@ db.testConnection = async () => {
   }
 };
 
-// Función para sincronizar modelos
+// Función para sincronizar modelos - FORZAR CREACIÓN
 db.syncModels = async (force = false) => {
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      await sequelize.sync({ force, alter: true });
-      console.log('✅ Modelos sincronizados con la base de datos.');
-    } catch (error) {
-      console.error('❌ Error al sincronizar modelos:', error.message);
-    }
+  try {
+    console.log('��� Iniciando sincronización de modelos...');
+    
+    // Forzar recreación de todas las tablas
+    await sequelize.sync({ force: true });
+    
+    console.log('✅ Todas las tablas creadas correctamente.');
+    
+    // Crear usuario admin por defecto
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash('admin123', 12);
+    
+    await User.create({
+      nombres: 'Administrador',
+      apellidos: 'Sistema',
+      email: 'admin@orpheo.local',
+      password: hashedPassword,
+      rol: 'admin',
+      grado: 'maestro',
+      estado: 'activo'
+    });
+    
+    console.log('✅ Usuario admin creado: admin@orpheo.local / admin123');
+    
+  } catch (error) {
+    console.error('❌ Error al sincronizar modelos:', error.message);
   }
 };
 

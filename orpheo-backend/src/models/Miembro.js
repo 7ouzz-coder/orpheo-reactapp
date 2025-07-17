@@ -1,9 +1,9 @@
 module.exports = (sequelize, DataTypes) => {
   const Miembro = sequelize.define('Miembro', {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
-      autoIncrement: true
     },
     nombres: {
       type: DataTypes.STRING(100),
@@ -27,13 +27,12 @@ module.exports = (sequelize, DataTypes) => {
       unique: true,
       validate: {
         notEmpty: true,
-        is: /^[0-9]+[-|‐]{1}[0-9kK]{1}$/
+        len: [8, 12]
       }
     },
     email: {
-      type: DataTypes.STRING(150),
+      type: DataTypes.STRING(255),
       allowNull: true,
-      unique: true,
       validate: {
         isEmail: true
       }
@@ -51,57 +50,42 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 'aprendiz'
     },
     estado: {
-      type: DataTypes.ENUM('activo', 'inactivo', 'suspendido'),
+      type: DataTypes.ENUM('activo', 'inactivo', 'suspendido', 'irradiado'),
       allowNull: false,
       defaultValue: 'activo'
+    },
+    fecha_iniciacion: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     fecha_ingreso: {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW
     },
-    fecha_nacimiento: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      validate: {
-        isDate: true,
-        isBefore: new Date().toISOString()
-      }
-    },
     direccion: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
     },
     ciudad_nacimiento: {
       type: DataTypes.STRING(100),
-      allowNull: true
+      allowNull: true,
     },
     profesion: {
       type: DataTypes.STRING(100),
-      allowNull: true
+      allowNull: true,
+    },
+    fecha_nacimiento: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     observaciones: {
       type: DataTypes.TEXT,
-      allowNull: true
-    },
-    foto_url: {
-      type: DataTypes.STRING(255),
       allowNull: true,
-      validate: {
-        isUrl: true
-      }
     },
     creado_por: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
-      references: {
-        model: 'users',
-        key: 'id'
-      }
-    },
-    actualizado_por: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
       references: {
         model: 'users',
         key: 'id'
@@ -109,14 +93,14 @@ module.exports = (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'miembros',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
     indexes: [
       {
         unique: true,
         fields: ['rut']
-      },
-      {
-        unique: true,
-        fields: ['email']
       },
       {
         fields: ['grado']
@@ -125,35 +109,12 @@ module.exports = (sequelize, DataTypes) => {
         fields: ['estado']
       },
       {
-        fields: ['nombres', 'apellidos']
+        fields: ['fecha_ingreso']
+      },
+      {
+        fields: ['creado_por']
       }
-    ],
-    hooks: {
-      beforeValidate: (miembro) => {
-        // Normalizar RUT
-        if (miembro.rut) {
-          miembro.rut = miembro.rut.replace(/\./g, '').toUpperCase();
-        }
-        
-        // Normalizar email
-        if (miembro.email) {
-          miembro.email = miembro.email.toLowerCase().trim();
-        }
-        
-        // Capitalizar nombres y apellidos
-        if (miembro.nombres) {
-          miembro.nombres = miembro.nombres.trim().replace(/\w\S*/g, (txt) => 
-            txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
-          );
-        }
-        
-        if (miembro.apellidos) {
-          miembro.apellidos = miembro.apellidos.trim().replace(/\w\S*/g, (txt) => 
-            txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
-          );
-        }
-      }
-    }
+    ]
   });
 
   // Métodos de instancia
@@ -163,7 +124,6 @@ module.exports = (sequelize, DataTypes) => {
 
   Miembro.prototype.getEdad = function() {
     if (!this.fecha_nacimiento) return null;
-    
     const today = new Date();
     const birthDate = new Date(this.fecha_nacimiento);
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -176,38 +136,27 @@ module.exports = (sequelize, DataTypes) => {
     return age;
   };
 
-  Miembro.prototype.getAnosEnLogia = function() {
-    const today = new Date();
-    const ingresoDate = new Date(this.fecha_ingreso);
-    let years = today.getFullYear() - ingresoDate.getFullYear();
-    const monthDiff = today.getMonth() - ingresoDate.getMonth();
-    
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < ingresoDate.getDate())) {
-      years--;
-    }
-    
-    return Math.max(0, years);
+  // Métodos estáticos
+  Miembro.findByRut = function(rut) {
+    return this.findOne({ where: { rut } });
   };
 
-  // Métodos estáticos
-  Miembro.getByGrado = function(grado) {
+  Miembro.findByGrado = function(grado) {
     return this.findAll({
       where: { grado, estado: 'activo' },
-      order: [['nombres', 'ASC']]
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
     });
   };
 
-  Miembro.buscarPorTexto = function(texto) {
-    const { Op } = require('sequelize');
+  Miembro.countByGrado = function() {
     return this.findAll({
-      where: {
-        [Op.or]: [
-          { nombres: { [Op.iLike]: `%${texto}%` } },
-          { apellidos: { [Op.iLike]: `%${texto}%` } },
-          { rut: { [Op.iLike]: `%${texto}%` } }
-        ]
-      },
-      order: [['nombres', 'ASC']]
+      attributes: [
+        'grado',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: { estado: 'activo' },
+      group: ['grado'],
+      raw: true
     });
   };
 

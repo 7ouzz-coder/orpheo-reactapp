@@ -4,7 +4,7 @@ const path = require('path');
 const { body, param, query } = require('express-validator');
 const documentosController = require('../controllers/documentosController');
 const authMiddleware = require('../middleware/auth');
-const permissionsMiddleware = require('../middleware/permissions');
+const { permissionsMiddleware } = require('../middleware/permissions');
 
 const router = express.Router();
 

@@ -2,7 +2,7 @@ const express = require('express');
 const { body, param, query } = require('express-validator');
 const notificacionesController = require('../controllers/notificacionesController');
 const authMiddleware = require('../middleware/auth');
-const permissionsMiddleware = require('../middleware/permissions');
+const { permissionsMiddleware } = require('../middleware/permissions');
 
 const router = express.Router();
 

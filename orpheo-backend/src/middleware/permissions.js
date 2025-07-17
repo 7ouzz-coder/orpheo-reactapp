@@ -1,57 +1,67 @@
 const logger = require('../utils/logger');
 
-// Definición de permisos por rol y grado
-const PERMISSIONS = {
-  // Permisos por rol
-  roles: {
-    superadmin: [
-      'manage_users',
-      'manage_members',
-      'manage_documents',
-      'manage_programs',
-      'approve_planchas',
-      'upload_documents',
-      'view_all_members',
-      'view_all_documents',
-      'system_admin',
-      'delete_any'
-    ],
-    admin: [
-      'manage_members',
-      'manage_documents', 
-      'manage_programs',
-      'approve_planchas',
-      'upload_documents',
-      'view_all_members',
-      'view_all_documents'
-    ],
-    general: [
-      'upload_documents',
-      'view_members_same_grade',
-      'view_documents_accessible'
-    ]
-  },
-
-  // Permisos adicionales por grado masónico
-  grados: {
-    maestro: [
-      'approve_planchas',
-      'view_all_documents',
-      'manage_programs',
-      'moderate_content'
-    ],
-    companero: [
-      'view_companero_content',
-      'upload_documents'
-    ],
-    aprendiz: [
-      'view_aprendiz_content'
-    ]
-  }
+// Definir permisos por rol
+const ROLE_PERMISSIONS = {
+  superadmin: [
+    'manage_users',
+    'manage_members',
+    'manage_documents',
+    'manage_programs',
+    'manage_notifications',
+    'view_audit_logs',
+    'manage_system',
+    'access_all_grades',
+    'create_programs',
+    'manage_attendance',
+    'send_notifications'
+  ],
+  admin: [
+    'manage_members',
+    'manage_documents',
+    'manage_programs',
+    'manage_notifications',
+    'view_reports',
+    'access_all_grades',
+    'create_programs',
+    'manage_attendance',
+    'send_notifications'
+  ],
+  general: [
+    'view_members',
+    'view_documents',
+    'view_programs',
+    'create_documents',
+    'access_own_grade'
+  ]
 };
 
-// Middleware principal de permisos
-const permissionsMiddleware = (requiredPermissions = []) => {
+// Definir permisos por grado masónico
+const GRADE_PERMISSIONS = {
+  maestro: [
+    'view_all_documents',
+    'moderate_documents',
+    'access_master_content',
+    'access_companero_content',
+    'access_aprendiz_content'
+  ],
+  companero: [
+    'view_companero_documents',
+    'access_companero_content',
+    'access_aprendiz_content'
+  ],
+  aprendiz: [
+    'view_aprendiz_documents',
+    'access_aprendiz_content'
+  ]
+};
+
+/**
+ * Middleware para verificar permisos específicos
+ * @param {string|string[]} requiredPermissions - Permisos requeridos
+ * @param {Object} options - Opciones adicionales
+ * @returns {Function} Middleware function
+ */
+const permissionsMiddleware = (requiredPermissions = [], options = {}) => {
   return (req, res, next) => {
     try {
       const user = req.user;
@@ -63,48 +73,56 @@ const permissionsMiddleware = (requiredPermissions = []) => {
         });
       }
 
-      // SuperAdmin tiene todos los permisos
-      if (user.rol === 'superadmin') {
-        return next();
-      }
+      // Convertir a array si es string
+      const permissions = Array.isArray(requiredPermissions) 
+        ? requiredPermissions 
+        : [requiredPermissions];
 
-      // Obtener permisos del usuario
-      const userPermissions = getUserPermissions(user);
+      // Obtener permisos del usuario basado en su rol
+      const userPermissions = ROLE_PERMISSIONS[user.rol] || [];
       
-      // Verificar si tiene todos los permisos requeridos
-      const hasAllPermissions = requiredPermissions.every(permission => 
-        userPermissions.includes(permission)
+      // Obtener permisos del usuario basado en su grado
+      const gradePermissions = GRADE_PERMISSIONS[user.grado] || [];
+      
+      // Combinar permisos
+      const allUserPermissions = [...userPermissions, ...gradePermissions];
+
+      // Verificar si el usuario tiene todos los permisos requeridos
+      const hasAllPermissions = permissions.every(permission => 
+        allUserPermissions.includes(permission)
       );
 
       if (!hasAllPermissions) {
-        logger.warn('Acceso denegado por permisos insuficientes', {
+        logger.security('Acceso denegado por permisos insuficientes', {
           userId: user.id,
           email: user.email,
           rol: user.rol,
           grado: user.grado,
-          requiredPermissions,
-          userPermissions,
+          requiredPermissions: permissions,
+          userPermissions: allUserPermissions,
           url: req.originalUrl,
-          method: req.method
+          method: req.method,
+          ip: req.ip
         });
 
         return res.status(403).json({
           success: false,
-          message: 'No tienes permisos suficientes para realizar esta acción',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          required: requiredPermissions,
-          missing: requiredPermissions.filter(p => !userPermissions.includes(p))
+          message: 'Permisos insuficientes para realizar esta acción',
+          code: 'INSUFFICIENT_PERMISSIONS'
         });
       }
 
-      // Log de acceso autorizado para acciones sensibles
-      if (requiredPermissions.length > 0) {
-        logger.info('Acceso autorizado con permisos', {
+      // Log de acceso autorizado para acciones importantes
+      if (req.method !== 'GET') {
+        logger.audit('Acceso autorizado a acción protegida', {
           userId: user.id,
           email: user.email,
-          permissions: requiredPermissions,
+          rol: user.rol,
+          grado: user.grado,
+          permissions: permissions,
           url: req.originalUrl,
-          method: req.method
+          method: req.method,
+          ip: req.ip
         });
       }
 
@@ -120,55 +138,62 @@ const permissionsMiddleware = (requiredPermissions = []) => {
   };
 };
 
-// Función para obtener todos los permisos de un usuario
-const getUserPermissions = (user) => {
-  const permissions = new Set();
+/**
+ * Verificar si un usuario tiene un permiso específico
+ * @param {Object} user - Usuario
+ * @param {string} permission - Permiso a verificar
+ * @returns {boolean}
+ */
+const hasPermission = (user, permission) => {
+  if (!user || !permission) return false;
 
-  // Agregar permisos por rol
-  const rolePermissions = PERMISSIONS.roles[user.rol] || [];
-  rolePermissions.forEach(permission => permissions.add(permission));
-
-  // Agregar permisos por grado
-  const gradePermissions = PERMISSIONS.grados[user.grado] || [];
-  gradePermissions.forEach(permission => permissions.add(permission));
-
-  return Array.from(permissions);
+  const userPermissions = ROLE_PERMISSIONS[user.rol] || [];
+  const gradePermissions = GRADE_PERMISSIONS[user.grado] || [];
+  
+  return [...userPermissions, ...gradePermissions].includes(permission);
 };
 
-// Middleware específico para verificar grado mínimo
-const requireGrade = (minimumGrade) => {
-  const gradeHierarchy = { aprendiz: 1, companero: 2, maestro: 3 };
-  
+/**
+ * Verificar si un usuario puede acceder a contenido de cierto grado
+ * @param {Object} user - Usuario
+ * @param {string} requiredGrade - Grado requerido
+ * @returns {boolean}
+ */
+const canAccessGrade = (user, requiredGrade) => {
+  if (!user || !requiredGrade) return false;
+
+  // SuperAdmin y Admin pueden acceder a todo
+  if (['superadmin', 'admin'].includes(user.rol)) {
+    return true;
+  }
+
+  const gradoJerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
+  const userGradeLevel = gradoJerarquia[user.grado] || 0;
+  const requiredGradeLevel = gradoJerarquia[requiredGrade] || 0;
+
+  return userGradeLevel >= requiredGradeLevel;
+};
+
+/**
+ * Middleware para verificar que el usuario pueda acceder a contenido de cierto grado
+ * @param {string} requiredGrade - Grado requerido
+ * @returns {Function} Middleware function
+ */
+const requireGrade = (requiredGrade) => {
   return (req, res, next) => {
     const user = req.user;
-    
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuario no autenticado'
-      });
-    }
 
-    // SuperAdmin siempre pasa
-    if (user.rol === 'superadmin') {
-      return next();
-    }
-
-    const userGradeLevel = gradeHierarchy[user.grado] || 0;
-    const requiredGradeLevel = gradeHierarchy[minimumGrade] || 0;
-
-    if (userGradeLevel < requiredGradeLevel) {
-      logger.warn('Acceso denegado por grado insuficiente', {
+    if (!canAccessGrade(user, requiredGrade)) {
+      logger.security('Acceso denegado por grado insuficiente', {
         userId: user.id,
-        email: user.email,
         userGrade: user.grado,
-        requiredGrade: minimumGrade,
+        requiredGrade: requiredGrade,
         url: req.originalUrl
       });
 
       return res.status(403).json({
         success: false,
-        message: `Se requiere grado mínimo de ${minimumGrade}`,
+        message: `Grado ${requiredGrade} requerido para acceder a este contenido`,
         code: 'INSUFFICIENT_GRADE'
       });
     }
@@ -177,63 +202,23 @@ const requireGrade = (minimumGrade) => {
   };
 };
 
-// Middleware para verificar que es el mismo usuario o tiene permisos de admin
-const requireSelfOrAdmin = (req, res, next) => {
-  const user = req.user;
-  const targetUserId = parseInt(req.params.id || req.params.userId);
+/**
+ * Middleware para verificar que el usuario sea administrador
+ */
+const requireAdmin = permissionsMiddleware(['manage_members', 'manage_documents']);
 
-  if (!user) {
-    return res.status(401).json({
-      success: false,
-      message: 'Usuario no autenticado'
-    });
-  }
-
-  // Es el mismo usuario o tiene rol de admin
-  if (user.id === targetUserId || ['admin', 'superadmin'].includes(user.rol)) {
-    return next();
-  }
-
-  logger.warn('Acceso denegado - no es el mismo usuario ni admin', {
-    userId: user.id,
-    targetUserId,
-    url: req.originalUrl
-  });
-
-  return res.status(403).json({
-    success: false,
-    message: 'Solo puedes acceder a tu propia información',
-    code: 'ACCESS_DENIED'
-  });
-};
-
-// Función helper para verificar permisos específicos
-const hasPermission = (user, permission) => {
-  if (user.rol === 'superadmin') return true;
-  
-  const userPermissions = getUserPermissions(user);
-  return userPermissions.includes(permission);
-};
-
-// Función helper para verificar acceso a documentos según grado
-const canAccessDocumentCategory = (user, documentCategory) => {
-  if (['superadmin', 'admin'].includes(user.rol)) return true;
-  
-  const gradeHierarchy = { aprendiz: 1, companero: 2, maestro: 3 };
-  const userLevel = gradeHierarchy[user.grado] || 0;
-  const documentLevel = gradeHierarchy[documentCategory] || 0;
-  
-  // Puede acceder si su grado es igual o superior al del documento
-  // O si el documento es 'general'
-  return documentCategory === 'general' || userLevel >= documentLevel;
-};
+/**
+ * Middleware para verificar que el usuario sea super administrador
+ */
+const requireSuperAdmin = permissionsMiddleware(['manage_system']);
 
 module.exports = {
   permissionsMiddleware,
-  requireGrade,
-  requireSelfOrAdmin,
-  getUserPermissions,
   hasPermission,
-  canAccessDocumentCategory,
-  PERMISSIONS
+  canAccessGrade,
+  requireGrade,
+  requireAdmin,
+  requireSuperAdmin,
+  ROLE_PERMISSIONS,
+  GRADE_PERMISSIONS
 };
