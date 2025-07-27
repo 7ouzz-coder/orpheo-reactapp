@@ -1,325 +1,148 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
   TouchableOpacity,
-  RefreshControl,
-  Dimensions,
-  Alert,
 } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // Redux
 import { 
   selectUser, 
   selectUserDisplayName,
-  selectUserRole,
-  selectUserGrade 
+  logout 
 } from '../../store/slices/authSlice';
-import { 
-  fetchMiembros, 
-  fetchEstadisticas as fetchMiembrosStats,
-  selectMiembrosEstadisticas,
-  selectMiembrosLoading 
-} from '../../store/slices/miembrosSlice';
-import { 
-  fetchDocumentos, 
-  fetchEstadisticas as fetchDocumentosStats,
-  selectDocumentosEstadisticas,
-  selectDocumentosLoading 
-} from '../../store/slices/documentosSlice';
 
-// Styles
-import { colors, getGradoColor } from '../../styles/colors';
-import { globalStyles, dimensions } from '../../styles/globalStyles';
-
-const { width: screenWidth } = Dimensions.get('window');
+// Colors
+const colors = {
+  background: '#0F0F0F',
+  surface: '#1A1A1A',
+  primary: '#D4AF37',
+  text: '#FFFFFF',
+  textSecondary: '#B0B0B0',
+  textMuted: '#808080',
+  border: '#333333',
+  success: '#4CAF50',
+  warning: '#FF9800',
+  error: '#F44336',
+};
 
 const DashboardScreen = () => {
   const dispatch = useDispatch();
-  const navigation = useNavigation();
-  
-  // Selectores
   const user = useSelector(selectUser);
   const userName = useSelector(selectUserDisplayName);
-  const userRole = useSelector(selectUserRole);
-  const userGrade = useSelector(selectUserGrade);
-  
-  const miembrosStats = useSelector(selectMiembrosEstadisticas);
-  const documentosStats = useSelector(selectDocumentosEstadisticas);
-  const miembrosLoading = useSelector(selectMiembrosLoading);
-  const documentosLoading = useSelector(selectDocumentosLoading);
-  
-  // Estado local
-  const [refreshing, setRefreshing] = React.useState(false);
 
-  // Cargar datos al iniciar
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      await Promise.all([
-        dispatch(fetchMiembrosStats()),
-        dispatch(fetchDocumentosStats()),
-        // dispatch(fetchProgramasStats()), // TODO: Implementar cuando esté listo
-      ]);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    }
+  const handleLogout = () => {
+    dispatch(logout());
   };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadDashboardData();
-    setRefreshing(false);
-  };
-
-  // Función para navegar a módulos
-  const navigateToModule = (module) => {
-    switch (module) {
-      case 'miembros':
-        navigation.navigate('MiembrosTab');
-        break;
-      case 'documentos':
-        navigation.navigate('DocumentosTab');
-        break;
-      case 'perfil':
-        navigation.navigate('Profile');
-        break;
-      default:
-        Alert.alert('Próximamente', `El módulo ${module} estará disponible pronto`);
-    }
-  };
-
-  // Componente de tarjeta de estadística
-  const StatCard = ({ title, value, icon, color, onPress, loading = false }) => (
-    <TouchableOpacity 
-      style={[styles.statCard, { borderLeftColor: color }]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View style={styles.statContent}>
-        <View style={styles.statIcon}>
-          <Icon name={icon} size={24} color={color} />
-        </View>
-        <View style={styles.statText}>
-          <Text style={styles.statValue}>
-            {loading ? '...' : value || '0'}
-          </Text>
-          <Text style={styles.statTitle}>{title}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  // Componente de acción rápida
-  const QuickAction = ({ title, icon, color, onPress }) => (
-    <TouchableOpacity 
-      style={[styles.quickAction, { backgroundColor: color + '20' }]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Icon name={icon} size={32} color={color} />
-      <Text style={[styles.quickActionText, { color }]}>{title}</Text>
-    </TouchableOpacity>
-  );
 
   return (
-    <SafeAreaView style={globalStyles.safeContainer}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header de bienvenida */}
-        <View style={styles.welcomeContainer}>
-          <View style={styles.welcomeText}>
-            <Text style={styles.welcomeTitle}>¡Bienvenido!</Text>
-            <Text style={styles.welcomeSubtitle}>{userName}</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.welcomeSection}>
+            <Text style={styles.welcomeText}>Bienvenido</Text>
+            <Text style={styles.userName}>{userName || 'Usuario Demo'}</Text>
             <View style={styles.userInfo}>
-              <View style={[styles.gradeBadge, { backgroundColor: getGradoColor(userGrade) + '20' }]}>
-                <Text style={[styles.gradeText, { color: getGradoColor(userGrade) }]}>
-                  {userGrade?.toUpperCase() || 'MIEMBRO'}
-                </Text>
-              </View>
-              <Text style={styles.roleText}>{userRole}</Text>
+              <Text style={styles.userGrade}>
+                Grado: {user?.grado || 'No definido'}
+              </Text>
+              <Text style={styles.userRole}>
+                Rol: {user?.rol || 'General'}
+              </Text>
             </View>
           </View>
-          <View style={styles.welcomeIcon}>
-            <Icon name="account-circle" size={60} color={colors.primary} />
-          </View>
-        </View>
-
-        {/* Estadísticas principales */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Resumen</Text>
           
-          <View style={styles.statsGrid}>
-            <StatCard
-              title="Total Miembros"
-              value={miembrosStats?.total}
-              icon="account-group"
-              color={colors.primary}
-              onPress={() => navigateToModule('miembros')}
-              loading={miembrosLoading}
-            />
-            
-            <StatCard
-              title="Documentos"
-              value={documentosStats?.total}
-              icon="file-document"
-              color={colors.info}
-              onPress={() => navigateToModule('documentos')}
-              loading={documentosLoading}
-            />
-            
-            <StatCard
-              title="Aprendices"
-              value={miembrosStats?.porGrado?.aprendiz}
-              icon="account-school"
-              color={colors.aprendiz}
-              onPress={() => navigateToModule('miembros')}
-              loading={miembrosLoading}
-            />
-            
-            <StatCard
-              title="Compañeros"
-              value={miembrosStats?.porGrado?.companero}
-              icon="account-tie"
-              color={colors.companero}
-              onPress={() => navigateToModule('miembros')}
-              loading={miembrosLoading}
-            />
-            
-            <StatCard
-              title="Maestros"
-              value={miembrosStats?.porGrado?.maestro}
-              icon="account-star"
-              color={colors.maestro}
-              onPress={() => navigateToModule('miembros')}
-              loading={miembrosLoading}
-            />
-            
-            <StatCard
-              title="Nuevos (mes)"
-              value={miembrosStats?.nuevosUltimoMes}
-              icon="account-plus"
-              color={colors.success}
-              onPress={() => navigateToModule('miembros')}
-              loading={miembrosLoading}
-            />
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Icon name="logout" size={20} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Icon name="account-group" size={32} color={colors.primary} />
+            <Text style={styles.statNumber}>25</Text>
+            <Text style={styles.statLabel}>Miembros</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <Icon name="file-document" size={32} color={colors.warning} />
+            <Text style={styles.statNumber}>12</Text>
+            <Text style={styles.statLabel}>Documentos</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <Icon name="calendar" size={32} color={colors.success} />
+            <Text style={styles.statNumber}>3</Text>
+            <Text style={styles.statLabel}>Programas</Text>
           </View>
         </View>
 
-        {/* Acciones rápidas */}
-        <View style={styles.section}>
+        {/* Quick Actions */}
+        <View style={styles.actionsContainer}>
           <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
           
-          <View style={styles.quickActionsGrid}>
-            <QuickAction
-              title="Ver Miembros"
-              icon="account-group"
-              color={colors.primary}
-              onPress={() => navigateToModule('miembros')}
-            />
-            
-            <QuickAction
-              title="Documentos"
-              icon="file-document"
-              color={colors.info}
-              onPress={() => navigateToModule('documentos')}
-            />
-            
-            <QuickAction
-              title="Programas"
-              icon="calendar"
-              color={colors.warning}
-              onPress={() => navigateToModule('programas')}
-            />
-            
-            <QuickAction
-              title="Mi Perfil"
-              icon="account-edit"
-              color={colors.success}
-              onPress={() => navigateToModule('perfil')}
-            />
-          </View>
+          <TouchableOpacity style={styles.actionButton}>
+            <Icon name="account-plus" size={24} color={colors.primary} />
+            <Text style={styles.actionText}>Nuevo Miembro</Text>
+            <Icon name="chevron-right" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.actionButton}>
+            <Icon name="file-upload" size={24} color={colors.primary} />
+            <Text style={styles.actionText}>Subir Documento</Text>
+            <Icon name="chevron-right" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.actionButton}>
+            <Icon name="calendar-plus" size={24} color={colors.primary} />
+            <Text style={styles.actionText}>Nuevo Programa</Text>
+            <Icon name="chevron-right" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
         </View>
 
-        {/* Actividad reciente */}
-        <View style={styles.section}>
+        {/* Recent Activity */}
+        <View style={styles.activityContainer}>
           <Text style={styles.sectionTitle}>Actividad Reciente</Text>
           
-          <View style={styles.activityContainer}>
-            <View style={styles.activityItem}>
-              <Icon name="account-plus" size={20} color={colors.success} />
-              <Text style={styles.activityText}>
-                Sistema iniciado correctamente
-              </Text>
-              <Text style={styles.activityTime}>Ahora</Text>
+          <View style={styles.activityItem}>
+            <Icon name="account" size={20} color={colors.success} />
+            <View style={styles.activityContent}>
+              <Text style={styles.activityText}>Nuevo miembro registrado</Text>
+              <Text style={styles.activityTime}>Hace 2 horas</Text>
             </View>
-            
-            <View style={styles.activityItem}>
-              <Icon name="database" size={20} color={colors.info} />
-              <Text style={styles.activityText}>
-                Datos sincronizados
-              </Text>
-              <Text style={styles.activityTime}>Hace 5 min</Text>
+          </View>
+          
+          <View style={styles.activityItem}>
+            <Icon name="file-document" size={20} color={colors.warning} />
+            <View style={styles.activityContent}>
+              <Text style={styles.activityText}>Documento subido</Text>
+              <Text style={styles.activityTime}>Hace 1 día</Text>
             </View>
-            
-            <View style={styles.activityItem}>
-              <Icon name="security" size={20} color={colors.primary} />
-              <Text style={styles.activityText}>
-                Sesión iniciada como {userRole}
-              </Text>
-              <Text style={styles.activityTime}>Hace 10 min</Text>
+          </View>
+          
+          <View style={styles.activityItem}>
+            <Icon name="calendar" size={20} color={colors.primary} />
+            <View style={styles.activityContent}>
+              <Text style={styles.activityText}>Programa creado</Text>
+              <Text style={styles.activityTime}>Hace 3 días</Text>
             </View>
           </View>
         </View>
 
-        {/* Información del sistema */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sistema</Text>
-          
-          <View style={globalStyles.card}>
-            <View style={styles.systemInfo}>
-              <Icon name="information" size={20} color={colors.info} />
-              <View style={styles.systemText}>
-                <Text style={styles.systemTitle}>Orpheo v1.0.0</Text>
-                <Text style={styles.systemSubtitle}>Sistema de Gestión Masónica</Text>
-              </View>
-            </View>
-            
-            <View style={styles.systemStatus}>
-              <View style={styles.statusItem}>
-                <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-                <Text style={styles.statusText}>Backend conectado</Text>
-              </View>
-              <View style={styles.statusItem}>
-                <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-                <Text style={styles.statusText}>Datos sincronizados</Text>
-              </View>
-            </View>
-          </View>
+        {/* Status Message */}
+        <View style={styles.statusContainer}>
+          <Icon name="check-circle" size={24} color={colors.success} />
+          <Text style={styles.statusText}>
+            Sistema funcionando correctamente ✨
+          </Text>
         </View>
-        
-        {/* Espaciado final */}
-        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -330,177 +153,141 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContent: {
-    padding: 16,
-  },
-  welcomeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  welcomeText: {
+  content: {
     flex: 1,
   },
-  welcomeTitle: {
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: 20,
+    paddingTop: 10,
+  },
+  welcomeSection: {
+    flex: 1,
+  },
+  welcomeText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  userName: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 4,
-  },
-  welcomeSubtitle: {
-    fontSize: 18,
-    color: colors.primary,
-    fontWeight: '600',
-    marginBottom: 8,
+    marginVertical: 4,
   },
   userInfo: {
+    marginTop: 8,
+  },
+  userGrade: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  userRole: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  logoutButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+  },
+  statsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
-  gradeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  gradeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  roleText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  welcomeIcon: {
-    marginLeft: 16,
-  },
-  section: {
+    paddingHorizontal: 20,
     marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
   },
   statCard: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
     padding: 16,
-    width: (screenWidth - 48) / 2,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statContent: {
-    flexDirection: 'row',
+    borderRadius: 12,
     alignItems: 'center',
-  },
-  statIcon: {
-    marginRight: 12,
-  },
-  statText: {
     flex: 1,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  statValue: {
+  statNumber: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
+    marginVertical: 8,
   },
-  statTitle: {
+  statLabel: {
     fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  quickAction: {
-    width: (screenWidth - 48) / 2,
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  quickActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 8,
     textAlign: 'center',
   },
-  activityContainer: {
+  actionsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  actionButton: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionText: {
+    fontSize: 16,
+    color: colors.text,
+    marginLeft: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  activityContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
   activityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  activityContent: {
+    marginLeft: 12,
+    flex: 1,
   },
   activityText: {
-    flex: 1,
     fontSize: 14,
     color: colors.text,
-    marginLeft: 12,
   },
   activityTime: {
     fontSize: 12,
     color: colors.textMuted,
+    marginTop: 2,
   },
-  systemInfo: {
+  statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  systemText: {
-    marginLeft: 12,
-  },
-  systemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  systemSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  systemStatus: {
-    marginTop: 8,
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+    justifyContent: 'center',
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   statusText: {
-    fontSize: 12,
-    color: colors.textSecondary,
+    fontSize: 14,
+    color: colors.text,
+    marginLeft: 8,
+    fontWeight: '500',
   },
 });
 

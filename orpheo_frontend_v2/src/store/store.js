@@ -3,48 +3,48 @@ import { persistStore, persistReducer } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { combineReducers } from '@reduxjs/toolkit';
 
-import authSlice from './slices/authSlice';
-import uiSlice from './slices/uiSlice';
-import miembrosSlice from './slices/miembrosSlice';
-import documentosSlice from './slices/documentosSlice';
+// Importar slices
+import authReducer from './slices/authSlice';
+// TODO: Agregar más slices cuando estén listos
+// import miembrosReducer from './slices/miembrosSlice';
+// import documentosReducer from './slices/documentosSlice';
 
+// Configuración de persistencia
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth'], // Solo persistir auth
-  version: 1,
+  whitelist: ['auth'], // Solo persistir auth por ahora
+  blacklist: [], // No persistir estos reducers
 };
 
+// Combinar reducers
 const rootReducer = combineReducers({
-  auth: authSlice,
-  ui: uiSlice,
-  miembros: miembrosSlice,
-  documentos: documentosSlice,
+  auth: authReducer,
+  // miembros: miembrosReducer, // TODO: Descomentar cuando esté listo
+  // documentos: documentosReducer, // TODO: Descomentar cuando esté listo
 });
 
+// Reducer persistido
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
+// Configurar store
 export const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         ignoredActions: [
-          'persist/PERSIST', 
+          'persist/FLUSH',
           'persist/REHYDRATE',
-          'persist/REGISTER',
-          'persist/PURGE',
           'persist/PAUSE',
-          'persist/FLUSH'
+          'persist/PERSIST',
+          'persist/PURGE',
+          'persist/REGISTER',
         ],
       },
     }),
-  devTools: __DEV__,
+  devTools: __DEV__, // Solo en desarrollo
 });
 
+// Persistor para PersistGate
 export const persistor = persistStore(store);
-
-export type RootState = ReturnType<typeof store.getState>;
-export type AppDispatch = typeof store.dispatch;
-
-export default store;

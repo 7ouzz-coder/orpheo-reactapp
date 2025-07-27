@@ -1,4 +1,3 @@
-// src/styles/globalStyles.js
 import { StyleSheet, Dimensions } from 'react-native';
 import { colors } from './colors';
 

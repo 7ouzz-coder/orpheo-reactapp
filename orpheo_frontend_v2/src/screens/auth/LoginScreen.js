@@ -5,280 +5,278 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
-  Alert,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { StatusBar } from 'expo-status-bar';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Toast from 'react-native-toast-message';
 
 // Redux
 import { 
   login, 
+  clearError,
   selectIsLoading, 
   selectError,
-  selectLoginAttempts,
-  clearError,
-  incrementLoginAttempts 
+  selectIsAuthenticated 
 } from '../../store/slices/authSlice';
 
 // Styles
 import { colors } from '../../styles/colors';
-import { globalStyles } from '../../styles/globalStyles';
+import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
 
-const LoginScreen = () => {
+const LoginScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   
-  // Redux state
+  // Estado local
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
+  
+  // Selectores Redux
   const isLoading = useSelector(selectIsLoading);
   const error = useSelector(selectError);
-  const loginAttempts = useSelector(selectLoginAttempts);
+  const isAuthenticated = useSelector(selectIsAuthenticated);
   
-  // Local state
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
-  const [showPassword, setShowPassword] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({});
+  // Datos de prueba para desarrollo
+  const mockUsers = [
+    { email: 'admin@orpheo.cl', password: 'admin123', role: 'admin', grado: 'maestro' },
+    { email: 'maestro@orpheo.cl', password: 'maestro123', role: 'general', grado: 'maestro' },
+    { email: 'companero@orpheo.cl', password: 'comp123', role: 'general', grado: 'companero' },
+    { email: 'aprendiz@orpheo.cl', password: 'apr123', role: 'general', grado: 'aprendiz' },
+  ];
 
-  // Limpiar errores al cambiar campos
+  // Limpiar errores al montar el componente
+  useEffect(() => {
+    dispatch(clearError());
+  }, [dispatch]);
+
+  // Mostrar error si existe
   useEffect(() => {
     if (error) {
-      dispatch(clearError());
+      Toast.show({
+        type: 'error',
+        text1: 'Error de Autenticación',
+        text2: error,
+        position: 'top',
+      });
     }
-    setValidationErrors({});
-  }, [formData.email, formData.password]);
+  }, [error]);
 
-  // Validar formulario
+  // Validación del formulario
   const validateForm = () => {
     const errors = {};
-
-    // Validar email
-    if (!formData.email.trim()) {
+    
+    if (!email.trim()) {
       errors.email = 'El email es requerido';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
       errors.email = 'Email inválido';
     }
-
-    // Validar password
-    if (!formData.password.trim()) {
+    
+    if (!password.trim()) {
       errors.password = 'La contraseña es requerida';
-    } else if (formData.password.length < 3) {
-      errors.password = 'La contraseña debe tener al menos 3 caracteres';
+    } else if (password.length < 6) {
+      errors.password = 'La contraseña debe tener al menos 6 caracteres';
     }
-
-    setValidationErrors(errors);
+    
+    setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   // Manejar login
   const handleLogin = async () => {
-    // Verificar intentos de login
-    if (loginAttempts >= 5) {
-      Alert.alert(
-        'Demasiados Intentos',
-        'Has excedido el número máximo de intentos. Espera unos minutos antes de intentar de nuevo.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     if (!validateForm()) {
       return;
     }
 
     try {
-      console.log('🔐 Iniciando login con:', formData.email);
-      await dispatch(login(formData)).unwrap();
-      // El navegador se encargará de cambiar a la pantalla principal
-    } catch (error) {
-      console.log('❌ Error en login:', error);
-      dispatch(incrementLoginAttempts());
-      
-      // Mostrar alert adicional para errores críticos
-      if (loginAttempts >= 3) {
-        Alert.alert(
-          'Error de Login',
-          `${error}\n\nIntentos restantes: ${5 - loginAttempts - 1}`,
-          [{ text: 'OK' }]
-        );
+      // Por ahora usar datos mock, luego conectar con backend real
+      const mockUser = mockUsers.find(
+        user => user.email === email && user.password === password
+      );
+
+      if (mockUser) {
+        // Simular datos del backend
+        const loginData = {
+          user: {
+            id: Date.now(),
+            email: mockUser.email,
+            nombres: 'Usuario',
+            apellidos: 'Demo',
+            rol: mockUser.role,
+            grado: mockUser.grado,
+            logia: 'Logia Demo',
+            numero_miembro: '001',
+          },
+          token: 'mock-jwt-token-' + Date.now(),
+        };
+
+        dispatch(login(loginData));
+        
+        Toast.show({
+          type: 'success',
+          text1: 'Bienvenido',
+          text2: `Sesión iniciada como ${mockUser.grado}`,
+          position: 'top',
+        });
+      } else {
+        throw new Error('Credenciales inválidas');
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Email o contraseña incorrectos',
+        position: 'top',
+      });
     }
   };
 
-  // Login rápido para desarrollo
-  const quickLogin = () => {
-    setFormData({
-      email: 'admin@orpheo.local',
-      password: 'admin123'
-    });
-    
-    // Auto-login después de un breve delay
-    setTimeout(() => {
-      handleLogin();
-    }, 500);
+  // Auto-completar para pruebas
+  const fillTestCredentials = (userType) => {
+    const user = mockUsers.find(u => u.grado === userType);
+    if (user) {
+      setEmail(user.email);
+      setPassword(user.password);
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <StatusBar style="light" backgroundColor={colors.primary} />
+      
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <Icon name="compass" size={80} color={colors.primary} />
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Icon name="temple-buddhist" size={60} color={colors.primary} />
+          </View>
+          <Text style={styles.title}>Orpheo</Text>
+          <Text style={styles.subtitle}>Sistema de Gestión Masónica</Text>
+        </View>
+
+        {/* Formulario */}
+        <View style={styles.formContainer}>
+          {/* Campo Email */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Email</Text>
+            <View style={styles.inputWrapper}>
+              <Icon name="email" size={20} color={colors.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[
+                  styles.textInput,
+                  formErrors.email && styles.inputError
+                ]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="tu@email.com"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
-            <Text style={styles.title}>ORPHEO</Text>
-            <Text style={styles.subtitle}>Sistema de Gestión Masónica</Text>
+            {formErrors.email && (
+              <Text style={styles.errorText}>{formErrors.email}</Text>
+            )}
           </View>
 
-          {/* Form */}
-          <View style={styles.formContainer}>
-            {/* Email Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <View style={styles.inputContainer}>
+          {/* Campo Contraseña */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Contraseña</Text>
+            <View style={styles.inputWrapper}>
+              <Icon name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[
+                  styles.textInput,
+                  formErrors.password && styles.inputError
+                ]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Tu contraseña"
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
                 <Icon 
-                  name="email-outline" 
+                  name={showPassword ? "eye-off" : "eye"} 
                   size={20} 
                   color={colors.textMuted} 
-                  style={styles.inputIcon}
                 />
-                <TextInput
-                  style={[
-                    styles.input,
-                    validationErrors.email && styles.inputError
-                  ]}
-                  placeholder="tu@email.com"
-                  placeholderTextColor={colors.placeholder}
-                  value={formData.email}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, email: text.trim() }))}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                />
-              </View>
-              {validationErrors.email && (
-                <Text style={styles.errorText}>{validationErrors.email}</Text>
-              )}
+              </TouchableOpacity>
             </View>
+            {formErrors.password && (
+              <Text style={styles.errorText}>{formErrors.password}</Text>
+            )}
+          </View>
 
-            {/* Password Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Contraseña</Text>
-              <View style={styles.inputContainer}>
-                <Icon 
-                  name="lock-outline" 
-                  size={20} 
-                  color={colors.textMuted} 
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[
-                    styles.input,
-                    validationErrors.password && styles.inputError
-                  ]}
-                  placeholder="Tu contraseña"
-                  placeholderTextColor={colors.placeholder}
-                  value={formData.password}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="password"
-                />
+          {/* Botón Login */}
+          <TouchableOpacity
+            style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={colors.background} size="small" />
+            ) : (
+              <>
+                <Icon name="login" size={20} color={colors.background} />
+                <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* Botones de prueba (solo para desarrollo) */}
+          {__DEV__ && (
+            <View style={styles.testSection}>
+              <Text style={styles.testTitle}>Cuentas de Prueba:</Text>
+              <View style={styles.testButtons}>
                 <TouchableOpacity
-                  style={styles.eyeIcon}
-                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.testButton}
+                  onPress={() => fillTestCredentials('aprendiz')}
                 >
-                  <Icon 
-                    name={showPassword ? "eye-off" : "eye"} 
-                    size={20} 
-                    color={colors.textMuted}
-                  />
+                  <Text style={styles.testButtonText}>Aprendiz</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={() => fillTestCredentials('companero')}
+                >
+                  <Text style={styles.testButtonText}>Compañero</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={() => fillTestCredentials('maestro')}
+                >
+                  <Text style={styles.testButtonText}>Maestro</Text>
                 </TouchableOpacity>
               </View>
-              {validationErrors.password && (
-                <Text style={styles.errorText}>{validationErrors.password}</Text>
-              )}
             </View>
+          )}
+        </View>
 
-            {/* Error Message */}
-            {error && (
-              <View style={styles.errorContainer}>
-                <Icon name="alert-circle" size={20} color={colors.error} />
-                <Text style={styles.errorMessage}>{error}</Text>
-              </View>
-            )}
-
-            {/* Login Button */}
-            <TouchableOpacity
-              style={[
-                styles.loginButton,
-                (isLoading || loginAttempts >= 5) && styles.loginButtonDisabled
-              ]}
-              onPress={handleLogin}
-              disabled={isLoading || loginAttempts >= 5}
-            >
-              {isLoading ? (
-                <View style={styles.loadingContainer}>
-                  <Icon name="loading" size={20} color={colors.background} />
-                  <Text style={styles.loginButtonText}>Ingresando...</Text>
-                </View>
-              ) : (
-                <View style={styles.buttonContent}>
-                  <Icon name="login" size={20} color={colors.background} />
-                  <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {/* Quick Login for Development */}
-            {__DEV__ && (
-              <TouchableOpacity
-                style={styles.quickLoginButton}
-                onPress={quickLogin}
-              >
-                <Text style={styles.quickLoginText}>
-                  🚀 Login Rápido (admin@orpheo.local)
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Login Attempts Warning */}
-            {loginAttempts > 0 && (
-              <View style={styles.warningContainer}>
-                <Icon name="alert" size={16} color={colors.warning} />
-                <Text style={styles.warningText}>
-                  Intentos fallidos: {loginAttempts}/5
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              Versión 1.0.0 • Desarrollo
-            </Text>
-            <Text style={styles.footerText}>
-              Sistema de Gestión Masónica
-            </Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.versionText}>Versión 1.0.0</Text>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -287,165 +285,139 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
+  scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: spacing.lg,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    paddingTop: hp(8),
+    paddingBottom: hp(4),
   },
   logoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: spacing.lg,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   title: {
-    fontSize: 32,
+    fontSize: fontSize.huge,
     fontWeight: 'bold',
     color: colors.primary,
-    letterSpacing: 3,
-    marginBottom: 8,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
   },
   formContainer: {
-    marginBottom: 32,
-  },
-  inputGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
   },
   inputContainer: {
+    marginBottom: spacing.lg,
+  },
+  inputLabel: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    marginBottom: spacing.xs,
+    fontWeight: '500',
+  },
+  inputWrapper: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 16,
   },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
+  textInput: {
     flex: 1,
-    height: 50,
-    fontSize: 16,
+    backgroundColor: colors.inputBackground,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingLeft: 50, // Espacio para el icono
+    fontSize: fontSize.md,
     color: colors.text,
-  },
-  eyeIcon: {
-    padding: 4,
   },
   inputError: {
     borderColor: colors.error,
   },
+  inputIcon: {
+    position: 'absolute',
+    left: spacing.md,
+    zIndex: 1,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: spacing.md,
+    padding: spacing.xs,
+  },
   errorText: {
-    fontSize: 12,
+    fontSize: fontSize.sm,
     color: colors.error,
-    marginTop: 4,
-    marginLeft: 4,
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.error + '20',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorMessage: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.error,
-    marginLeft: 8,
+    marginTop: spacing.xs,
+    marginLeft: spacing.xs,
   },
   loginButton: {
     backgroundColor: colors.primary,
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: spacing.lg,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginTop: spacing.lg,
   },
   loginButtonDisabled: {
-    backgroundColor: colors.disabled,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: colors.textMuted,
   },
   loginButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
     color: colors.background,
-    marginLeft: 8,
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    marginLeft: spacing.sm,
   },
-  quickLoginButton: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: colors.warning + '20',
-    borderRadius: 8,
-    alignItems: 'center',
+  testSection: {
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
   },
-  quickLoginText: {
-    fontSize: 12,
-    color: colors.warning,
-    fontWeight: '500',
+  testTitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
   },
-  warningContainer: {
+  testButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    padding: 8,
-    backgroundColor: colors.warning + '20',
-    borderRadius: 6,
+    justifyContent: 'space-around',
   },
-  warningText: {
-    fontSize: 12,
-    color: colors.warning,
-    marginLeft: 4,
+  testButton: {
+    backgroundColor: colors.inputBackground,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+  },
+  testButtonText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '500',
   },
   footer: {
     alignItems: 'center',
-    marginTop: 32,
+    paddingBottom: spacing.xl,
   },
-  footerText: {
-    fontSize: 12,
+  versionText: {
+    fontSize: fontSize.xs,
     color: colors.textMuted,
-    marginBottom: 4,
   },
 });
 
