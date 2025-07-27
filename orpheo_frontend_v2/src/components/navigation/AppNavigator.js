@@ -1,21 +1,27 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-// Redux
+// Redux - USAR SOLO LOS SELECTORES QUE SABEMOS QUE EXISTEN
 import { 
   selectIsAuthenticated, 
   selectIsLoading,
-  checkAuthStatus 
+  checkAuthStatus
 } from '../../store/slices/authSlice';
 
-// Screens
+// Screens - IMPORTAR SOLO LOS QUE NO CAUSAN PROBLEMAS
 import LoginScreen from '../../screens/auth/LoginScreen';
+import DashboardScreen from '../../screens/dashboard/DashboardScreen';
 
-// Colors - Definidos directamente para evitar errores de import
+// NO IMPORTAR ESTOS POR AHORA (pueden tener imports problemáticos):
+// import MiembrosListScreen from '../../screens/miembros/MiembrosListScreen';
+// import DocumentosListScreen from '../../screens/documentos/DocumentosListScreen';
+// import ProfileScreen from '../../screens/profile/ProfileScreen';
+
+// Colors - DEFINIR LOCALMENTE PARA EVITAR ERRORES
 const colors = {
   background: '#0F0F0F',
   surface: '#1A1A1A',
@@ -28,24 +34,54 @@ const colors = {
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Dashboard Simple (temporal)
-const DashboardScreen = () => (
-  <View style={styles.dashboardContainer}>
-    <Icon name="temple-buddhist" size={80} color={colors.primary} />
-    <View style={styles.welcomeCard}>
-      <Icon name="check-circle" size={32} color="#4CAF50" />
-      <View style={styles.textContainer}>
-        <View style={styles.titleText}>¡App Orpheo Funcionando! 🎉</View>
-        <View style={styles.subtitleText}>
-          ETAPA 1 completada exitosamente
-        </View>
-        <View style={styles.nextStepsText}>
-          ✅ Redux configurado{'\n'}
-          ✅ Navegación funcionando{'\n'}
-          ✅ Login operativo{'\n'}
-          ✅ Tema aplicado correctamente
-        </View>
-      </View>
+// Componente temporal para todas las pestañas que no están listas
+const PlaceholderScreen = ({ route }) => (
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    padding: 20,
+  }}>
+    <Icon name="construction" size={60} color={colors.primary} />
+    <Text style={{ 
+      color: colors.text, 
+      fontSize: 18, 
+      marginTop: 16,
+      fontWeight: '600',
+      textAlign: 'center',
+    }}>
+      {route.name} - En Desarrollo
+    </Text>
+    <Text style={{ 
+      color: colors.textMuted, 
+      fontSize: 14, 
+      marginTop: 8,
+      textAlign: 'center',
+      paddingHorizontal: 20,
+      lineHeight: 20,
+    }}>
+      Esta sección estará disponible próximamente.{'\n'}
+      Estamos trabajando en implementar todas las funcionalidades.
+    </Text>
+    <View style={{
+      marginTop: 20,
+      padding: 16,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    }}>
+      <Text style={{
+        color: colors.text,
+        fontSize: 12,
+        textAlign: 'center',
+      }}>
+        ✅ Login funcionando{'\n'}
+        ✅ Navegación operativa{'\n'}
+        ✅ Redux configurado{'\n'}
+        🔄 Módulos en desarrollo
+      </Text>
     </View>
   </View>
 );
@@ -84,7 +120,7 @@ const MainTabNavigator = () => {
       />
       <Tab.Screen 
         name="Miembros" 
-        component={DashboardScreen} // Temporal
+        component={PlaceholderScreen}
         options={{
           title: 'Miembros',
           tabBarIcon: ({ color, size }) => (
@@ -94,7 +130,7 @@ const MainTabNavigator = () => {
       />
       <Tab.Screen 
         name="Documentos" 
-        component={DashboardScreen} // Temporal
+        component={PlaceholderScreen}
         options={{
           title: 'Documentos',
           tabBarIcon: ({ color, size }) => (
@@ -104,7 +140,7 @@ const MainTabNavigator = () => {
       />
       <Tab.Screen 
         name="Perfil" 
-        component={DashboardScreen} // Temporal
+        component={PlaceholderScreen}
         options={{
           title: 'Perfil',
           tabBarIcon: ({ color, size }) => (
@@ -130,8 +166,20 @@ const AppNavigator = () => {
   // Mostrar loading mientras verifica autenticación
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: colors.background 
+      }}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{
+          color: colors.text,
+          marginTop: 16,
+          fontSize: 16,
+        }}>
+          Cargando Orpheo...
+        </Text>
       </View>
     );
   }
@@ -151,54 +199,5 @@ const AppNavigator = () => {
     </Stack.Navigator>
   );
 };
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  dashboardContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  welcomeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    marginTop: 32,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    maxWidth: 350,
-  },
-  textContainer: {
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  titleText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.primary,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitleText: {
-    fontSize: 16,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  nextStepsText: {
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'left',
-    lineHeight: 20,
-  },
-});
 
 export default AppNavigator;

@@ -1,277 +1,377 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
+  StyleSheet,
   Alert,
   Linking,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
+// Redux
+import {
+  fetchMiembroById,
+  deleteMiembro,
+  clearMiembroSeleccionado,
+  selectMiembroSeleccionado,
+  selectLoadingDetail,
+  selectLoadingDelete,
+  selectError,
+} from '../../store/slices/miembrosSlice';
+
+// Components
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+
 // Styles
-import { colors, getGradoColor, getEstadoColor } from '../../styles/colors';
-import { globalStyles } from '../../styles/globalStyles';
+import { colors } from '../../styles/colors';
+import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
 
-const MiembroDetailScreen = () => {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { miembro } = route.params;
+// Utils
+import { getInitials, formatRUT } from '../../utils/helpers';
 
-  // Funciones de utilidad
-  const formatDate = (dateString) => {
-    if (!dateString) return 'No especificada';
-    return new Date(dateString).toLocaleDateString('es-CL');
+const MiembroDetailScreen = ({ route, navigation }) => {
+  const { miembroId } = route.params;
+  const dispatch = useDispatch();
+  
+  // Estados locales
+  const [showActions, setShowActions] = useState(false);
+  
+  // Selectores Redux
+  const miembro = useSelector(selectMiembroSeleccionado);
+  const loading = useSelector(selectLoadingDetail);
+  const loadingDelete = useSelector(selectLoadingDelete);
+  const error = useSelector(selectError);
+
+  // Cargar miembro al montar componente
+  useEffect(() => {
+    console.log(`🔍 Cargando detalle del miembro ID: ${miembroId}`);
+    dispatch(fetchMiembroById(miembroId));
+    
+    // Limpiar al desmontar
+    return () => {
+      dispatch(clearMiembroSeleccionado());
+    };
+  }, [miembroId, dispatch]);
+
+  // Configurar header con acciones
+  useEffect(() => {
+    if (miembro) {
+      navigation.setOptions({
+        title: `${miembro.nombres} ${miembro.apellidos}`,
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={() => setShowActions(!showActions)}
+            style={styles.headerButton}
+          >
+            <Icon name="dots-vertical" size={24} color={colors.text} />
+          </TouchableOpacity>
+        ),
+      });
+    }
+  }, [miembro, navigation, showActions]);
+
+  // Colores por grado
+  const getGradoColor = (grado) => {
+    switch (grado) {
+      case 'aprendiz':
+        return colors.info;
+      case 'companero':
+        return colors.warning;
+      case 'maestro':
+        return colors.success;
+      default:
+        return colors.textSecondary;
+    }
   };
 
+  // Color del estado
+  const getEstadoColor = (estado) => {
+    switch (estado) {
+      case 'activo':
+        return colors.success;
+      case 'inactivo':
+        return colors.textSecondary;
+      case 'suspendido':
+        return colors.warning;
+      case 'irradiado':
+        return colors.error;
+      default:
+        return colors.textSecondary;
+    }
+  };
+
+  // Manejar llamada telefónica
   const handleCall = (telefono) => {
     if (telefono) {
       Linking.openURL(`tel:${telefono}`);
     }
   };
 
+  // Manejar envío de email
   const handleEmail = (email) => {
     if (email) {
       Linking.openURL(`mailto:${email}`);
     }
   };
 
+  // Manejar edición
   const handleEdit = () => {
-    navigation.navigate('MiembroForm', { miembro });
+    navigation.navigate('MiembroForm', { miembroId: miembro.id });
   };
 
+  // Manejar eliminación
   const handleDelete = () => {
     Alert.alert(
-      'Eliminar Miembro',
-      `¿Estás seguro de que quieres eliminar a ${miembro.nombres} ${miembro.apellidos}?`,
+      'Confirmar Eliminación',
+      `¿Estás seguro de que deseas eliminar a ${miembro.nombres} ${miembro.apellidos}?\n\nEsta acción no se puede deshacer.`,
       [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Eliminar', 
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Eliminar',
           style: 'destructive',
-          onPress: () => {
-            // TODO: Implementar eliminación
-            Alert.alert('Función pendiente', 'La eliminación será implementada próximamente');
-          }
+          onPress: async () => {
+            try {
+              await dispatch(deleteMiembro(miembro.id)).unwrap();
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error al eliminar miembro:', error);
+            }
+          },
         },
       ]
     );
   };
 
-  // Componente de información
-  const InfoRow = ({ icon, label, value, onPress, actionIcon }) => (
-    <TouchableOpacity 
-      style={styles.infoRow}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
-      <View style={styles.infoIcon}>
-        <Icon name={icon} size={20} color={colors.primary} />
+  // Renderizar campo de información
+  const renderInfoField = (label, value, icon, onPress, color) => {
+    if (!value) return null;
+
+    return (
+      <TouchableOpacity
+        style={styles.infoField}
+        onPress={onPress}
+        disabled={!onPress}
+        activeOpacity={onPress ? 0.7 : 1}
+      >
+        <View style={styles.infoIcon}>
+          <Icon name={icon} size={20} color={color || colors.textSecondary} />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoLabel}>{label}</Text>
+          <Text style={[styles.infoValue, onPress && { color: colors.primary }]}>
+            {value}
+          </Text>
+        </View>
+        {onPress && (
+          <Icon name="chevron-right" size={20} color={colors.textSecondary} />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // Renderizar sección
+  const renderSection = (title, children) => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionContent}>
+        {children}
       </View>
-      <View style={styles.infoContent}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue}>{value || 'No especificado'}</Text>
-      </View>
-      {actionIcon && (
-        <Icon name={actionIcon} size={20} color={colors.textMuted} />
-      )}
-    </TouchableOpacity>
+    </View>
   );
 
+  // Estados de carga y error
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LoadingSpinner />
+        <Text style={styles.loadingText}>Cargando información del miembro...</Text>
+      </View>
+    );
+  }
+
+  if (error || !miembro) {
+    return (
+      <View style={styles.errorContainer}>
+        <Icon name="alert-circle" size={64} color={colors.error} />
+        <Text style={styles.errorTitle}>Error al cargar miembro</Text>
+        <Text style={styles.errorSubtitle}>
+          {error || 'No se pudo encontrar la información del miembro'}
+        </Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => dispatch(fetchMiembroById(miembroId))}
+        >
+          <Icon name="refresh" size={20} color={colors.white} />
+          <Text style={styles.retryButtonText}>Reintentar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={globalStyles.safeContainer}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Header del miembro */}
         <View style={styles.memberHeader}>
-          <View style={styles.avatarContainer}>
-            <Icon 
-              name="account-circle" 
-              size={80} 
-              color={getGradoColor(miembro.grado)} 
-            />
-          </View>
-          
-          <View style={styles.memberInfo}>
-            <Text style={styles.memberName}>
-              {miembro.nombres} {miembro.apellidos}
+          {/* Avatar */}
+          <View style={[styles.avatar, { backgroundColor: getGradoColor(miembro.grado) }]}>
+            <Text style={styles.avatarText}>
+              {getInitials(miembro.nombres, miembro.apellidos)}
             </Text>
-            <Text style={styles.memberEmail}>{miembro.email}</Text>
+          </View>
+
+          {/* Información principal */}
+          <Text style={styles.memberName}>
+            {miembro.nombres} {miembro.apellidos}
+          </Text>
+          
+          <Text style={styles.memberRut}>
+            {formatRUT(miembro.rut)}
+          </Text>
+
+          {/* Badges de grado y estado */}
+          <View style={styles.badges}>
+            <View style={[styles.badge, { backgroundColor: getGradoColor(miembro.grado) }]}>
+              <Icon 
+                name={miembro.grado === 'aprendiz' ? 'school' : miembro.grado === 'companero' ? 'account-group' : 'crown'} 
+                size={16} 
+                color={colors.white} 
+              />
+              <Text style={styles.badgeText}>
+                {miembro.grado.charAt(0).toUpperCase() + miembro.grado.slice(1)}
+              </Text>
+            </View>
             
-            <View style={styles.badges}>
-              <View style={[styles.gradeBadge, { backgroundColor: getGradoColor(miembro.grado) + '20' }]}>
-                <Text style={[styles.gradeText, { color: getGradoColor(miembro.grado) }]}>
-                  {miembro.grado?.toUpperCase() || 'MIEMBRO'}
-                </Text>
-              </View>
-              <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(miembro.estado) + '20' }]}>
-                <Text style={[styles.estadoText, { color: getEstadoColor(miembro.estado) }]}>
-                  {miembro.estado?.toUpperCase() || 'ACTIVO'}
-                </Text>
-              </View>
+            <View style={[styles.badge, { backgroundColor: getEstadoColor(miembro.estado) }]}>
+              <Icon name="circle" size={8} color={colors.white} />
+              <Text style={styles.badgeText}>
+                {miembro.estado.charAt(0).toUpperCase() + miembro.estado.slice(1)}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* Acciones rápidas */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => handleCall(miembro.telefono)}
-          >
-            <Icon name="phone" size={20} color={colors.success} />
-            <Text style={[styles.actionText, { color: colors.success }]}>Llamar</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => handleEmail(miembro.email)}
-          >
-            <Icon name="email" size={20} color={colors.info} />
-            <Text style={[styles.actionText, { color: colors.info }]}>Email</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={handleEdit}
-          >
-            <Icon name="pencil" size={20} color={colors.warning} />
-            <Text style={[styles.actionText, { color: colors.warning }]}>Editar</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={handleDelete}
-          >
-            <Icon name="delete" size={20} color={colors.error} />
-            <Text style={[styles.actionText, { color: colors.error }]}>Eliminar</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Información de contacto */}
+        {renderSection('Información de Contacto', (
+          <>
+            {renderInfoField(
+              'Email',
+              miembro.email,
+              'email',
+              miembro.email ? () => handleEmail(miembro.email) : null,
+              colors.primary
+            )}
+            {renderInfoField(
+              'Teléfono',
+              miembro.telefono,
+              'phone',
+              miembro.telefono ? () => handleCall(miembro.telefono) : null,
+              colors.success
+            )}
+            {renderInfoField(
+              'Dirección',
+              miembro.direccion,
+              'map-marker',
+              null
+            )}
+          </>
+        ))}
 
         {/* Información personal */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información Personal</Text>
-          <View style={globalStyles.card}>
-            <InfoRow
-              icon="card-account-details"
-              label="RUT"
-              value={miembro.rut}
-            />
-            <InfoRow
-              icon="phone"
-              label="Teléfono"
-              value={miembro.telefono}
-              onPress={() => handleCall(miembro.telefono)}
-              actionIcon="phone"
-            />
-            <InfoRow
-              icon="email"
-              label="Email"
-              value={miembro.email}
-              onPress={() => handleEmail(miembro.email)}
-              actionIcon="email"
-            />
-            <InfoRow
-              icon="home"
-              label="Dirección"
-              value={miembro.direccion}
-            />
-            <InfoRow
-              icon="calendar"
-              label="Fecha de Nacimiento"
-              value={formatDate(miembro.fecha_nacimiento)}
-            />
-          </View>
-        </View>
+        {renderSection('Información Personal', (
+          <>
+            {renderInfoField(
+              'Fecha de Nacimiento',
+              miembro.fechaNacimiento ? new Date(miembro.fechaNacimiento).toLocaleDateString('es-CL') : null,
+              'calendar',
+              null
+            )}
+            {renderInfoField(
+              'Ciudad de Nacimiento',
+              miembro.ciudadNacimiento,
+              'city',
+              null
+            )}
+            {renderInfoField(
+              'Profesión',
+              miembro.profesion,
+              'briefcase',
+              null
+            )}
+          </>
+        ))}
 
         {/* Información masónica */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información Masónica</Text>
-          <View style={globalStyles.card}>
-            <InfoRow
-              icon="compass"
-              label="Grado"
-              value={miembro.grado}
-            />
-            <InfoRow
-              icon="calendar-plus"
-              label="Fecha de Iniciación"
-              value={formatDate(miembro.fecha_iniciacion)}
-            />
-            <InfoRow
-              icon="calendar-check"
-              label="Fecha de Exaltación"
-              value={formatDate(miembro.fecha_exaltacion)}
-            />
-            <InfoRow
-              icon="account-star"
-              label="Padrino"
-              value={miembro.padrino}
-            />
-            <InfoRow
-              icon="information"
-              label="Estado"
-              value={miembro.estado}
-            />
-          </View>
-        </View>
+        {renderSection('Información Masónica', (
+          <>
+            {renderInfoField(
+              'Fecha de Iniciación',
+              miembro.fechaIniciacion ? new Date(miembro.fechaIniciacion).toLocaleDateString('es-CL') : null,
+              'calendar-star',
+              null
+            )}
+            {renderInfoField(
+              'Fecha de Ingreso',
+              miembro.fechaIngreso ? new Date(miembro.fechaIngreso).toLocaleDateString('es-CL') : null,
+              'calendar-check',
+              null
+            )}
+          </>
+        ))}
 
-        {/* Información profesional */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información Profesional</Text>
-          <View style={globalStyles.card}>
-            <InfoRow
-              icon="briefcase"
-              label="Profesión"
-              value={miembro.profesion}
-            />
-            <InfoRow
-              icon="domain"
-              label="Empresa"
-              value={miembro.empresa}
-            />
-            <InfoRow
-              icon="school"
-              label="Educación"
-              value={miembro.educacion}
-            />
-          </View>
-        </View>
-
-        {/* Información adicional */}
-        {(miembro.observaciones || miembro.created_at) && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Información Adicional</Text>
-            <View style={globalStyles.card}>
-              {miembro.observaciones && (
-                <InfoRow
-                  icon="note-text"
-                  label="Observaciones"
-                  value={miembro.observaciones}
-                />
-              )}
-              <InfoRow
-                icon="calendar-clock"
-                label="Fecha de Registro"
-                value={formatDate(miembro.created_at)}
-              />
-              {miembro.updated_at && (
-                <InfoRow
-                  icon="update"
-                  label="Última Actualización"
-                  value={formatDate(miembro.updated_at)}
-                />
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Espaciado final */}
-        <View style={{ height: 40 }} />
+        {/* Información del sistema */}
+        {renderSection('Información del Sistema', (
+          <>
+            {renderInfoField(
+              'Fecha de Registro',
+              new Date(miembro.created_at).toLocaleString('es-CL'),
+              'clock-plus',
+              null
+            )}
+            {renderInfoField(
+              'Última Actualización',
+              new Date(miembro.updated_at).toLocaleString('es-CL'),
+              'clock-edit',
+              null
+            )}
+          </>
+        ))}
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Botones de acción */}
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.editButton]}
+          onPress={handleEdit}
+        >
+          <Icon name="pencil" size={20} color={colors.white} />
+          <Text style={styles.actionButtonText}>Editar</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.actionButton, 
+            styles.deleteButton,
+            { opacity: loadingDelete ? 0.5 : 1 }
+          ]}
+          onPress={handleDelete}
+          disabled={loadingDelete}
+        >
+          <Icon 
+            name={loadingDelete ? "loading" : "delete"} 
+            size={20} 
+            color={colors.white} 
+          />
+          <Text style={styles.actionButtonText}>Eliminar</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
@@ -280,104 +380,203 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  
+  content: {
+    flex: 1,
+  },
+  
+  headerButton: {
+    padding: spacing.sm,
+  },
+  
   memberHeader: {
+    alignItems: 'center',
+    padding: spacing.xl,
     backgroundColor: colors.surface,
-    padding: 24,
+    marginBottom: spacing.md,
+  },
+  
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginBottom: spacing.md,
   },
-  avatarContainer: {
-    marginBottom: 16,
+  
+  avatarText: {
+    color: colors.white,
+    fontSize: fontSize.xxl,
+    fontWeight: 'bold',
   },
-  memberInfo: {
-    alignItems: 'center',
-  },
+  
   memberName: {
-    fontSize: 24,
+    fontSize: fontSize.xxl,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 4,
     textAlign: 'center',
+    marginBottom: spacing.xs,
   },
-  memberEmail: {
-    fontSize: 16,
+  
+  memberRut: {
+    fontSize: fontSize.lg,
     color: colors.textSecondary,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
+  
   badges: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: spacing.sm,
   },
-  gradeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-  },
-  gradeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  estadoBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  estadoText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  quickActions: {
+  
+  badge: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  actionButton: {
     alignItems: 'center',
-    padding: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    gap: spacing.xs,
   },
-  actionText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 4,
+  
+  badgeText: {
+    color: colors.white,
+    fontSize: fontSize.sm,
+    fontWeight: '600',
   },
+  
   section: {
-    padding: 16,
+    marginBottom: spacing.lg,
   },
+  
   sectionTitle: {
-    fontSize: 18,
+    fontSize: fontSize.lg,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 12,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
-  infoRow: {
+  
+  sectionContent: {
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.md,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  
+  infoField: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  
   infoIcon: {
     width: 40,
     alignItems: 'center',
   },
+  
   infoContent: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: spacing.sm,
   },
+  
   infoLabel: {
-    fontSize: 12,
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginBottom: 2,
   },
+  
   infoValue: {
-    fontSize: 16,
+    fontSize: fontSize.md,
     color: colors.text,
     fontWeight: '500',
+  },
+  
+  actionButtons: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+    borderRadius: 12,
+    gap: spacing.sm,
+  },
+  
+  editButton: {
+    backgroundColor: colors.primary,
+  },
+  
+  deleteButton: {
+    backgroundColor: colors.error,
+  },
+  
+  actionButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+  },
+  
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
+  
+  errorTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.error,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  
+  errorSubtitle: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 25,
+    gap: spacing.sm,
+  },
+  
+  retryButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
   },
 });
 

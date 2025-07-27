@@ -1,5 +1,3 @@
-// src/utils/helpers.js
-
 /**
  * Formatear fecha a string legible en español
  */

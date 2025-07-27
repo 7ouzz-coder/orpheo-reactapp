@@ -1,170 +1,121 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { miembrosService } from '../../services/miembrosService';
 import Toast from 'react-native-toast-message';
-import api from '../../services/api';
 
 // Estado inicial
 const initialState = {
+  // Lista de miembros
   miembros: [],
-  selectedMiembro: null,
-  isLoading: false,
-  isLoadingDetail: false,
-  isCreating: false,
-  isUpdating: false,
-  isDeleting: false,
-  error: null,
-  
-  // Filtros y búsqueda
-  filters: {
-    search: '',
-    grado: null,
-    estado: 'activo',
-    vigencia: null,
-  },
+  miembroSeleccionado: null,
   
   // Paginación
-  pagination: {
-    currentPage: 1,
-    pageSize: 20,
-    totalItems: 0,
-    totalPages: 0,
+  page: 1,
+  limit: 20,
+  totalMiembros: 0,
+  totalPages: 1,
+  
+  // Filtros y búsqueda
+  filtros: {
+    grado: 'todos',
+    estado: 'todos',
+    search: '',
+    sortBy: 'apellidos',
+    sortOrder: 'ASC'
   },
+  
+  // Estados de carga
+  loading: {
+    list: false,
+    detail: false,
+    create: false,
+    update: false,
+    delete: false,
+    stats: false
+  },
+  
+  // Errores
+  error: null,
   
   // Estadísticas
   estadisticas: {
     total: 0,
-    porGrado: {
-      aprendiz: 0,
-      companero: 0,
-      maestro: 0,
-    },
-    porEstado: {
-      activo: 0,
-      inactivo: 0,
-      suspendido: 0,
-    },
-    nuevosUltimoMes: 0,
-  },
-  
-  // Cache
-  lastFetch: null,
-  cacheTimeout: 5 * 60 * 1000, // 5 minutos
+    aprendices: 0,
+    companeros: 0,
+    maestros: 0,
+    activos: 0,
+    inactivos: 0
+  }
 };
 
-// Thunks asíncronos
+// Thunks para operaciones asíncronas
 
-// Fetch miembros con filtros y paginación
+// Obtener lista de miembros
 export const fetchMiembros = createAsyncThunk(
   'miembros/fetchMiembros',
-  async (params = {}, { getState, rejectWithValue }) => {
+  async (params, { getState, rejectWithValue }) => {
     try {
-      const state = getState().miembros;
+      const state = getState();
+      const { filtros, page, limit } = state.miembros;
       
-      // Usar filtros actuales si no se proporcionan
-      const filters = { ...state.filters, ...params.filters };
-      const pagination = { ...state.pagination, ...params.pagination };
+      // Combinar parámetros del thunk con el estado actual
+      const finalParams = {
+        page,
+        limit,
+        ...filtros,
+        ...params
+      };
       
-      console.log('📊 Cargando miembros...', filters);
+      console.log('📋 Obteniendo miembros con parámetros:', finalParams);
       
-      const response = await api.get('/miembros', {
-        params: {
-          page: pagination.currentPage,
-          limit: pagination.pageSize,
-          search: filters.search,
-          grado: filters.grado,
-          estado: filters.estado,
-          vigencia: filters.vigencia,
-        },
-      });
+      const response = await miembrosService.getMiembros(finalParams);
       
-      if (response.data && response.data.success) {
-        console.log(`✅ Miembros cargados: ${response.data.data.miembros.length}`);
-        return {
-          miembros: response.data.data.miembros,
-          pagination: response.data.data.pagination,
-          filters,
-        };
+      if (response.success) {
+        console.log(`✅ ${response.data.miembros.length} miembros obtenidos`);
+        return response.data;
       } else {
-        throw new Error(response.data?.message || 'Error al cargar miembros');
+        throw new Error(response.message || 'Error al obtener miembros');
       }
     } catch (error) {
-      console.error('❌ Error al cargar miembros:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Error de conexión';
-      
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: `No se pudieron cargar los miembros: ${errorMessage}`,
-        visibilityTime: 4000,
-      });
-      
+      console.error('❌ Error al obtener miembros:', error);
+      const errorMessage = error.response?.data?.message || error.message;
       return rejectWithValue(errorMessage);
     }
   }
 );
 
-// Fetch estadísticas
-export const fetchEstadisticas = createAsyncThunk(
-  'miembros/fetchEstadisticas',
-  async (_, { rejectWithValue }) => {
-    try {
-      console.log('📈 Cargando estadísticas de miembros...');
-      
-      const response = await api.get('/miembros/estadisticas');
-      
-      if (response.data && response.data.success) {
-        console.log('✅ Estadísticas cargadas');
-        return response.data.data;
-      } else {
-        throw new Error(response.data?.message || 'Error al cargar estadísticas');
-      }
-    } catch (error) {
-      console.warn('⚠️ Error al cargar estadísticas:', error.message);
-      return rejectWithValue(error.response?.data?.message || error.message);
-    }
-  }
-);
-
-// Fetch miembro por ID
+// Obtener miembro por ID
 export const fetchMiembroById = createAsyncThunk(
   'miembros/fetchMiembroById',
   async (id, { rejectWithValue }) => {
     try {
-      console.log(`👤 Cargando miembro ID: ${id}`);
+      console.log(`🔍 Obteniendo miembro ID: ${id}`);
       
-      const response = await api.get(`/miembros/${id}`);
+      const response = await miembrosService.getMiembroById(id);
       
-      if (response.data && response.data.success) {
-        console.log(`✅ Miembro cargado: ${response.data.data.nombres}`);
-        return response.data.data;
+      if (response.success) {
+        console.log('✅ Miembro obtenido exitosamente');
+        return response.data;
       } else {
-        throw new Error(response.data?.message || 'Miembro no encontrado');
+        throw new Error(response.message || 'Error al obtener miembro');
       }
     } catch (error) {
-      console.error('❌ Error al cargar miembro:', error);
+      console.error('❌ Error al obtener miembro:', error);
       const errorMessage = error.response?.data?.message || error.message;
-      
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: `No se pudo cargar el miembro: ${errorMessage}`,
-        visibilityTime: 4000,
-      });
-      
       return rejectWithValue(errorMessage);
     }
   }
 );
 
-// Crear miembro
+// Crear nuevo miembro
 export const createMiembro = createAsyncThunk(
   'miembros/createMiembro',
   async (miembroData, { dispatch, rejectWithValue }) => {
     try {
-      console.log('➕ Creando miembro:', miembroData.nombres);
+      console.log('➕ Creando nuevo miembro:', miembroData.nombres, miembroData.apellidos);
       
-      const response = await api.post('/miembros', miembroData);
+      const response = await miembrosService.createMiembro(miembroData);
       
-      if (response.data && response.data.success) {
+      if (response.success) {
         console.log('✅ Miembro creado exitosamente');
         
         Toast.show({
@@ -174,13 +125,13 @@ export const createMiembro = createAsyncThunk(
           visibilityTime: 3000,
         });
         
-        // Recargar lista de miembros
+        // Recargar lista y estadísticas
         dispatch(fetchMiembros());
         dispatch(fetchEstadisticas());
         
-        return response.data.data;
+        return response.data;
       } else {
-        throw new Error(response.data?.message || 'Error al crear miembro');
+        throw new Error(response.message || 'Error al crear miembro');
       }
     } catch (error) {
       console.error('❌ Error al crear miembro:', error);
@@ -205,15 +156,15 @@ export const updateMiembro = createAsyncThunk(
     try {
       console.log(`✏️ Actualizando miembro ID: ${id}`);
       
-      const response = await api.put(`/miembros/${id}`, data);
+      const response = await miembrosService.updateMiembro(id, data);
       
-      if (response.data && response.data.success) {
+      if (response.success) {
         console.log('✅ Miembro actualizado exitosamente');
         
         Toast.show({
           type: 'success',
           text1: 'Miembro Actualizado',
-          text2: `Los datos han sido guardados correctamente`,
+          text2: 'Los datos han sido guardados correctamente',
           visibilityTime: 3000,
         });
         
@@ -221,9 +172,9 @@ export const updateMiembro = createAsyncThunk(
         dispatch(fetchMiembros());
         dispatch(fetchEstadisticas());
         
-        return response.data.data;
+        return response.data;
       } else {
-        throw new Error(response.data?.message || 'Error al actualizar miembro');
+        throw new Error(response.message || 'Error al actualizar miembro');
       }
     } catch (error) {
       console.error('❌ Error al actualizar miembro:', error);
@@ -248,9 +199,9 @@ export const deleteMiembro = createAsyncThunk(
     try {
       console.log(`🗑️ Eliminando miembro ID: ${id}`);
       
-      const response = await api.delete(`/miembros/${id}`);
+      const response = await miembrosService.deleteMiembro(id);
       
-      if (response.data && response.data.success) {
+      if (response.success) {
         console.log('✅ Miembro eliminado exitosamente');
         
         Toast.show({
@@ -266,7 +217,7 @@ export const deleteMiembro = createAsyncThunk(
         
         return id;
       } else {
-        throw new Error(response.data?.message || 'Error al eliminar miembro');
+        throw new Error(response.message || 'Error al eliminar miembro');
       }
     } catch (error) {
       console.error('❌ Error al eliminar miembro:', error);
@@ -284,6 +235,29 @@ export const deleteMiembro = createAsyncThunk(
   }
 );
 
+// Obtener estadísticas
+export const fetchEstadisticas = createAsyncThunk(
+  'miembros/fetchEstadisticas',
+  async (_, { rejectWithValue }) => {
+    try {
+      console.log('📊 Obteniendo estadísticas de miembros');
+      
+      const response = await miembrosService.getEstadisticas();
+      
+      if (response.success) {
+        console.log('✅ Estadísticas obtenidas exitosamente');
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Error al obtener estadísticas');
+      }
+    } catch (error) {
+      console.error('❌ Error al obtener estadísticas:', error);
+      const errorMessage = error.response?.data?.message || error.message;
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
 // Slice
 const miembrosSlice = createSlice({
   name: 'miembros',
@@ -294,179 +268,144 @@ const miembrosSlice = createSlice({
       state.error = null;
     },
     
-    // Actualizar filtros
-    setFilters: (state, action) => {
-      state.filters = { ...state.filters, ...action.payload };
-      state.pagination.currentPage = 1; // Reset a la primera página
-    },
-    
-    // Limpiar filtros
-    clearFilters: (state) => {
-      state.filters = {
-        search: '',
-        grado: null,
-        estado: 'activo',
-        vigencia: null,
-      };
-      state.pagination.currentPage = 1;
-    },
-    
-    // Actualizar paginación
-    setPagination: (state, action) => {
-      state.pagination = { ...state.pagination, ...action.payload };
-    },
-    
-    // Seleccionar miembro
-    setSelectedMiembro: (state, action) => {
-      state.selectedMiembro = action.payload;
-    },
-    
     // Limpiar miembro seleccionado
-    clearSelectedMiembro: (state) => {
-      state.selectedMiembro = null;
+    clearMiembroSeleccionado: (state) => {
+      state.miembroSeleccionado = null;
     },
     
-    // Invalidar cache
-    invalidateCache: (state) => {
-      state.lastFetch = null;
+    // Actualizar filtros
+    updateFiltros: (state, action) => {
+      state.filtros = { ...state.filtros, ...action.payload };
+      state.page = 1; // Resetear página al cambiar filtros
     },
+    
+    // Cambiar página
+    setPage: (state, action) => {
+      state.page = action.payload;
+    },
+    
+    // Resetear filtros
+    resetFiltros: (state) => {
+      state.filtros = initialState.filtros;
+      state.page = 1;
+    }
   },
   extraReducers: (builder) => {
-    // Fetch miembros
     builder
+      // Fetch miembros
       .addCase(fetchMiembros.pending, (state) => {
-        state.isLoading = true;
+        state.loading.list = true;
         state.error = null;
       })
       .addCase(fetchMiembros.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.loading.list = false;
         state.miembros = action.payload.miembros;
-        state.pagination = action.payload.pagination;
-        state.filters = action.payload.filters;
-        state.lastFetch = new Date().toISOString();
+        state.totalMiembros = action.payload.totalMiembros;
+        state.totalPages = action.payload.totalPages;
+        state.page = action.payload.page;
+        state.error = null;
       })
       .addCase(fetchMiembros.rejected, (state, action) => {
-        state.isLoading = false;
+        state.loading.list = false;
         state.error = action.payload;
-      });
-
-    // Fetch estadísticas
-    builder
-      .addCase(fetchEstadisticas.fulfilled, (state, action) => {
-        state.estadisticas = action.payload;
-      });
-
-    // Fetch miembro by ID
-    builder
+      })
+      
+      // Fetch miembro por ID
       .addCase(fetchMiembroById.pending, (state) => {
-        state.isLoadingDetail = true;
+        state.loading.detail = true;
         state.error = null;
       })
       .addCase(fetchMiembroById.fulfilled, (state, action) => {
-        state.isLoadingDetail = false;
-        state.selectedMiembro = action.payload;
+        state.loading.detail = false;
+        state.miembroSeleccionado = action.payload;
+        state.error = null;
       })
       .addCase(fetchMiembroById.rejected, (state, action) => {
-        state.isLoadingDetail = false;
+        state.loading.detail = false;
         state.error = action.payload;
-      });
-
-    // Create miembro
-    builder
+      })
+      
+      // Crear miembro
       .addCase(createMiembro.pending, (state) => {
-        state.isCreating = true;
+        state.loading.create = true;
         state.error = null;
       })
       .addCase(createMiembro.fulfilled, (state) => {
-        state.isCreating = false;
-      })
-      .addCase(createMiembro.rejected, (state, action) => {
-        state.isCreating = false;
-        state.error = action.payload;
-      });
-
-    // Update miembro
-    builder
-      .addCase(updateMiembro.pending, (state) => {
-        state.isUpdating = true;
+        state.loading.create = false;
         state.error = null;
       })
-      .addCase(updateMiembro.fulfilled, (state) => {
-        state.isUpdating = false;
+      .addCase(createMiembro.rejected, (state, action) => {
+        state.loading.create = false;
+        state.error = action.payload;
+      })
+      
+      // Actualizar miembro
+      .addCase(updateMiembro.pending, (state) => {
+        state.loading.update = true;
+        state.error = null;
+      })
+      .addCase(updateMiembro.fulfilled, (state, action) => {
+        state.loading.update = false;
+        state.miembroSeleccionado = action.payload;
+        state.error = null;
       })
       .addCase(updateMiembro.rejected, (state, action) => {
-        state.isUpdating = false;
+        state.loading.update = false;
         state.error = action.payload;
-      });
-
-    // Delete miembro
-    builder
+      })
+      
+      // Eliminar miembro
       .addCase(deleteMiembro.pending, (state) => {
-        state.isDeleting = true;
+        state.loading.delete = true;
         state.error = null;
       })
       .addCase(deleteMiembro.fulfilled, (state) => {
-        state.isDeleting = false;
+        state.loading.delete = false;
+        state.error = null;
       })
       .addCase(deleteMiembro.rejected, (state, action) => {
-        state.isDeleting = false;
+        state.loading.delete = false;
+        state.error = action.payload;
+      })
+      
+      // Estadísticas
+      .addCase(fetchEstadisticas.pending, (state) => {
+        state.loading.stats = true;
+      })
+      .addCase(fetchEstadisticas.fulfilled, (state, action) => {
+        state.loading.stats = false;
+        state.estadisticas = action.payload;
+      })
+      .addCase(fetchEstadisticas.rejected, (state, action) => {
+        state.loading.stats = false;
         state.error = action.payload;
       });
-  },
+  }
 });
 
-// Actions
+// Exportar acciones
 export const {
   clearError,
-  setFilters,
-  clearFilters,
-  setPagination,
-  setSelectedMiembro,
-  clearSelectedMiembro,
-  invalidateCache,
+  clearMiembroSeleccionado,
+  updateFiltros,
+  setPage,
+  resetFiltros
 } = miembrosSlice.actions;
 
 // Selectores
 export const selectMiembros = (state) => state.miembros.miembros;
-export const selectMiembrosLoading = (state) => state.miembros.isLoading;
-export const selectMiembrosError = (state) => state.miembros.error;
-export const selectMiembrosFilters = (state) => state.miembros.filters;
-export const selectMiembrosPagination = (state) => state.miembros.pagination;
-export const selectMiembrosEstadisticas = (state) => state.miembros.estadisticas;
-export const selectSelectedMiembro = (state) => state.miembros.selectedMiembro;
-export const selectMiembrosDetailLoading = (state) => state.miembros.isLoadingDetail;
-export const selectMiembrosCreating = (state) => state.miembros.isCreating;
-export const selectMiembrosUpdating = (state) => state.miembros.isUpdating;
-export const selectMiembrosDeleting = (state) => state.miembros.isDeleting;
+export const selectMiembroSeleccionado = (state) => state.miembros.miembroSeleccionado;
+export const selectLoadingList = (state) => state.miembros.loading.list;
+export const selectLoadingDetail = (state) => state.miembros.loading.detail;
+export const selectLoadingCreate = (state) => state.miembros.loading.create;
+export const selectLoadingUpdate = (state) => state.miembros.loading.update;
+export const selectLoadingDelete = (state) => state.miembros.loading.delete;
+export const selectError = (state) => state.miembros.error;
+export const selectFiltros = (state) => state.miembros.filtros;
+export const selectPage = (state) => state.miembros.page;
+export const selectTotalPages = (state) => state.miembros.totalPages;
+export const selectTotalMiembros = (state) => state.miembros.totalMiembros;
+export const selectEstadisticas = (state) => state.miembros.estadisticas;
 
-// Selectores derivados
-export const selectFilteredMiembros = (state) => {
-  const miembros = selectMiembros(state);
-  const filters = selectMiembrosFilters(state);
-  
-  return miembros.filter((miembro) => {
-    // Filtro por búsqueda
-    if (filters.search) {
-      const searchTerm = filters.search.toLowerCase();
-      const fullName = `${miembro.nombres} ${miembro.apellidos}`.toLowerCase();
-      const matches = fullName.includes(searchTerm) || 
-                     miembro.rut?.includes(searchTerm) ||
-                     miembro.email?.toLowerCase().includes(searchTerm);
-      if (!matches) return false;
-    }
-    
-    // Filtro por grado
-    if (filters.grado && miembro.grado !== filters.grado) {
-      return false;
-    }
-    
-    // Filtro por estado
-    if (filters.estado && miembro.estado !== filters.estado) {
-      return false;
-    }
-    
-    return true;
-  });
-};
-
+// Exportar reducer
 export default miembrosSlice.reducer;

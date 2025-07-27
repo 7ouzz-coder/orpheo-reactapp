@@ -6,13 +6,13 @@ const API_CONFIG = {
   BASE_URL: {
     development: {
       // Para desarrollo local
-      android: 'http://10.0.2.2:3001/api', // Emulador Android
-      ios: 'http://localhost:3001/api',     // Simulador iOS
-      web: 'http://localhost:3001/api',     // Web
-      default: 'http://192.168.1.100:3001/api', // IP local (cambiar por tu IP)
+      android: 'http://191.112.178.230:3001/api', // Emulador Android
+      ios: 'http://191.112.178.230:3001/api',     // Simulador iOS
+      web: 'http://191.112.178.230:3001/api',     // Web
+      default: 'http://191.112.178.230:3001/api', // IP local (cambiar por tu IP)
     },
     production: {
-      default: 'https://tu-servidor.com/api', // URL de producción
+      default: '191.112.178.230:3001/api', // URL de producción
     },
   },
   

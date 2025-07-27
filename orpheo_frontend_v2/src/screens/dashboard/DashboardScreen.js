@@ -10,14 +10,13 @@ import {
 import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-// Redux
+// Redux - USAR SOLO LOS SELECTORES QUE EXISTEN
 import { 
   selectUser, 
-  selectUserDisplayName,
   logout 
 } from '../../store/slices/authSlice';
 
-// Colors
+// Colors - DEFINIR LOCALMENTE PARA EVITAR ERRORES DE IMPORT
 const colors = {
   background: '#0F0F0F',
   surface: '#1A1A1A',
@@ -34,10 +33,17 @@ const colors = {
 const DashboardScreen = () => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
-  const userName = useSelector(selectUserDisplayName);
 
   const handleLogout = () => {
     dispatch(logout());
+  };
+
+  // Función para obtener el nombre del usuario
+  const getUserDisplayName = () => {
+    if (!user) return 'Usuario Demo';
+    return user.nombres && user.apellidos 
+      ? `${user.nombres} ${user.apellidos}`
+      : user.email || 'Usuario';
   };
 
   return (
@@ -47,7 +53,7 @@ const DashboardScreen = () => {
         <View style={styles.header}>
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeText}>Bienvenido</Text>
-            <Text style={styles.userName}>{userName || 'Usuario Demo'}</Text>
+            <Text style={styles.userName}>{getUserDisplayName()}</Text>
             <View style={styles.userInfo}>
               <Text style={styles.userGrade}>
                 Grado: {user?.grado || 'No definido'}
@@ -63,84 +69,77 @@ const DashboardScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Success Message */}
+        <View style={styles.successContainer}>
+          <Icon name="check-circle" size={32} color={colors.success} />
+          <View style={styles.successContent}>
+            <Text style={styles.successTitle}>¡App Funcionando Correctamente! 🎉</Text>
+            <Text style={styles.successSubtitle}>
+              ETAPA 1 completada exitosamente
+            </Text>
+          </View>
+        </View>
+
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Icon name="account-group" size={32} color={colors.primary} />
+            <Icon name="account-group" size={28} color={colors.primary} />
             <Text style={styles.statNumber}>25</Text>
             <Text style={styles.statLabel}>Miembros</Text>
           </View>
           
           <View style={styles.statCard}>
-            <Icon name="file-document" size={32} color={colors.warning} />
+            <Icon name="file-document" size={28} color={colors.warning} />
             <Text style={styles.statNumber}>12</Text>
             <Text style={styles.statLabel}>Documentos</Text>
           </View>
           
           <View style={styles.statCard}>
-            <Icon name="calendar" size={32} color={colors.success} />
+            <Icon name="calendar" size={28} color={colors.success} />
             <Text style={styles.statNumber}>3</Text>
             <Text style={styles.statLabel}>Programas</Text>
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.actionsContainer}>
-          <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
+        {/* Progress Checklist */}
+        <View style={styles.progressContainer}>
+          <Text style={styles.sectionTitle}>Estado del Proyecto</Text>
           
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="account-plus" size={24} color={colors.primary} />
-            <Text style={styles.actionText}>Nuevo Miembro</Text>
-            <Icon name="chevron-right" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="file-upload" size={24} color={colors.primary} />
-            <Text style={styles.actionText}>Subir Documento</Text>
-            <Icon name="chevron-right" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="calendar-plus" size={24} color={colors.primary} />
-            <Text style={styles.actionText}>Nuevo Programa</Text>
-            <Icon name="chevron-right" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Recent Activity */}
-        <View style={styles.activityContainer}>
-          <Text style={styles.sectionTitle}>Actividad Reciente</Text>
-          
-          <View style={styles.activityItem}>
-            <Icon name="account" size={20} color={colors.success} />
-            <View style={styles.activityContent}>
-              <Text style={styles.activityText}>Nuevo miembro registrado</Text>
-              <Text style={styles.activityTime}>Hace 2 horas</Text>
-            </View>
+          <View style={styles.progressItem}>
+            <Icon name="check-circle" size={20} color={colors.success} />
+            <Text style={styles.progressText}>Redux configurado</Text>
           </View>
           
-          <View style={styles.activityItem}>
-            <Icon name="file-document" size={20} color={colors.warning} />
-            <View style={styles.activityContent}>
-              <Text style={styles.activityText}>Documento subido</Text>
-              <Text style={styles.activityTime}>Hace 1 día</Text>
-            </View>
+          <View style={styles.progressItem}>
+            <Icon name="check-circle" size={20} color={colors.success} />
+            <Text style={styles.progressText}>Navegación funcionando</Text>
           </View>
           
-          <View style={styles.activityItem}>
-            <Icon name="calendar" size={20} color={colors.primary} />
-            <View style={styles.activityContent}>
-              <Text style={styles.activityText}>Programa creado</Text>
-              <Text style={styles.activityTime}>Hace 3 días</Text>
-            </View>
+          <View style={styles.progressItem}>
+            <Icon name="check-circle" size={20} color={colors.success} />
+            <Text style={styles.progressText}>Login operativo</Text>
+          </View>
+          
+          <View style={styles.progressItem}>
+            <Icon name="check-circle" size={20} color={colors.success} />
+            <Text style={styles.progressText}>Tema aplicado</Text>
+          </View>
+          
+          <View style={styles.progressItem}>
+            <Icon name="clock" size={20} color={colors.warning} />
+            <Text style={styles.progressText}>Módulos en desarrollo</Text>
           </View>
         </View>
 
-        {/* Status Message */}
-        <View style={styles.statusContainer}>
-          <Icon name="check-circle" size={24} color={colors.success} />
-          <Text style={styles.statusText}>
-            Sistema funcionando correctamente ✨
+        {/* Next Steps */}
+        <View style={styles.nextStepsContainer}>
+          <Text style={styles.sectionTitle}>Próximos Pasos</Text>
+          <Text style={styles.nextStepsText}>
+            • Conectar con backend real{'\n'}
+            • Implementar CRUD de miembros{'\n'}
+            • Sistema de documentos{'\n'}
+            • Gestión de programas{'\n'}
+            • Notificaciones en tiempo real
           </Text>
         </View>
       </ScrollView>
@@ -194,6 +193,31 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.surface,
   },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  successContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  successTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  successSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -220,7 +244,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  actionsContainer: {
+  progressContainer: {
     paddingHorizontal: 20,
     marginBottom: 24,
   },
@@ -230,64 +254,24 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 16,
   },
-  actionButton: {
-    backgroundColor: colors.surface,
+  progressItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: 8,
   },
-  actionText: {
-    fontSize: 16,
+  progressText: {
+    fontSize: 14,
     color: colors.text,
     marginLeft: 12,
-    fontWeight: '500',
-    flex: 1,
   },
-  activityContainer: {
+  nextStepsContainer: {
     paddingHorizontal: 20,
-    marginBottom: 24,
+    marginBottom: 40,
   },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  activityContent: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  activityText: {
+  nextStepsText: {
     fontSize: 14,
-    color: colors.text,
-  },
-  activityTime: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statusText: {
-    fontSize: 14,
-    color: colors.text,
-    marginLeft: 8,
-    fontWeight: '500',
+    color: colors.textSecondary,
+    lineHeight: 22,
   },
 });
 

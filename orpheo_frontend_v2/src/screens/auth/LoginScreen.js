@@ -5,17 +5,16 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
-  ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Toast from 'react-native-toast-message';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Redux
 import { 
@@ -23,27 +22,44 @@ import {
   clearError,
   selectIsLoading, 
   selectError,
-  selectIsAuthenticated 
+  selectIsAuthenticated,
+  selectLoginAttempts 
 } from '../../store/slices/authSlice';
+
+// Components
+import { LoadingOverlay } from '../../components/common/LoadingSpinner';
+
+// Utils - función definida directamente para evitar imports problemáticos
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+import { checkServerHealth } from '../../services/apiClient';
 
 // Styles
 import { colors } from '../../styles/colors';
 import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
 
 const LoginScreen = ({ navigation }) => {
+    
   const dispatch = useDispatch();
   
   // Estado local
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [useRealAPI, setUseRealAPI] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [serverStatus, setServerStatus] = useState(null);
   
   // Selectores Redux
   const isLoading = useSelector(selectIsLoading);
   const error = useSelector(selectError);
   const isAuthenticated = useSelector(selectIsAuthenticated);
-  
+  const loginAttempts = useSelector(selectLoginAttempts);
+
   // Datos de prueba para desarrollo
   const mockUsers = [
     { email: 'admin@orpheo.cl', password: 'admin123', role: 'admin', grado: 'maestro' },
@@ -51,6 +67,11 @@ const LoginScreen = ({ navigation }) => {
     { email: 'companero@orpheo.cl', password: 'comp123', role: 'general', grado: 'companero' },
     { email: 'aprendiz@orpheo.cl', password: 'apr123', role: 'general', grado: 'aprendiz' },
   ];
+
+  // Verificar estado del servidor al cargar
+  useEffect(() => {
+    checkServerStatus();
+  }, []);
 
   // Limpiar errores al montar el componente
   useEffect(() => {
@@ -65,9 +86,49 @@ const LoginScreen = ({ navigation }) => {
         text1: 'Error de Autenticación',
         text2: error,
         position: 'top',
+        visibilityTime: 4000,
       });
     }
   }, [error]);
+
+  // Verificar estado del servidor
+  const checkServerStatus = async () => {
+    try {
+      const result = await checkServerHealth();
+      setServerStatus(result);
+      
+      if (result.success) {
+        setUseRealAPI(true);
+        Toast.show({
+          type: 'success',
+          text1: 'Backend Conectado',
+          text2: 'Servidor 191.112.178.230 disponible',
+          position: 'top',
+          visibilityTime: 2000,
+        });
+      } else {
+        setUseRealAPI(false);
+        Toast.show({
+          type: 'info',
+          text1: 'Backend No Disponible',
+          text2: 'Verificar conexión a 191.112.178.230:3001',
+          position: 'top',
+          visibilityTime: 4000,
+        });
+      }
+    } catch (error) {
+      console.log('Server health check failed:', error);
+      setServerStatus({ success: false, error: error.message });
+      setUseRealAPI(false);
+      Toast.show({
+        type: 'error',
+        text1: 'Error de Conexión',
+        text2: 'Revisar endpoint /api/health en backend',
+        position: 'top',
+        visibilityTime: 3000,
+      });
+    }
+  };
 
   // Validación del formulario
   const validateForm = () => {
@@ -75,7 +136,7 @@ const LoginScreen = ({ navigation }) => {
     
     if (!email.trim()) {
       errors.email = 'El email es requerido';
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
+    } else if (!validateEmail(email)) {
       errors.email = 'Email inválido';
     }
     
@@ -96,44 +157,61 @@ const LoginScreen = ({ navigation }) => {
     }
 
     try {
-      // Por ahora usar datos mock, luego conectar con backend real
-      const mockUser = mockUsers.find(
-        user => user.email === email && user.password === password
-      );
-
-      if (mockUser) {
-        // Simular datos del backend
-        const loginData = {
-          user: {
-            id: Date.now(),
-            email: mockUser.email,
-            nombres: 'Usuario',
-            apellidos: 'Demo',
-            rol: mockUser.role,
-            grado: mockUser.grado,
-            logia: 'Logia Demo',
-            numero_miembro: '001',
-          },
-          token: 'mock-jwt-token-' + Date.now(),
-        };
-
-        dispatch(login(loginData));
+      if (useRealAPI && serverStatus?.success) {
+        // Usar API real
+        const resultAction = await dispatch(login({ email, password }));
         
-        Toast.show({
-          type: 'success',
-          text1: 'Bienvenido',
-          text2: `Sesión iniciada como ${mockUser.grado}`,
-          position: 'top',
-        });
+        if (login.fulfilled.match(resultAction)) {
+          Toast.show({
+            type: 'success',
+            text1: 'Bienvenido',
+            text2: 'Sesión iniciada con backend real',
+            position: 'top',
+          });
+        }
       } else {
-        throw new Error('Credenciales inválidas');
+        // Usar datos mock
+        const mockUser = mockUsers.find(
+          user => user.email === email && user.password === password
+        );
+
+        if (mockUser) {
+          // Simular datos del backend
+          const loginData = {
+            user: {
+              id: Date.now(),
+              email: mockUser.email,
+              nombres: 'Usuario',
+              apellidos: 'Demo',
+              rol: mockUser.role,
+              grado: mockUser.grado,
+              logia: 'Logia Demo',
+              numero_miembro: '001',
+            },
+            token: 'mock-jwt-token-' + Date.now(),
+            refreshToken: 'mock-refresh-token-' + Date.now(),
+          };
+
+          const resultAction = await dispatch(login(loginData));
+          
+          if (login.fulfilled.match(resultAction)) {
+            Toast.show({
+              type: 'success',
+              text1: 'Bienvenido (Modo Demo)',
+              text2: `Sesión iniciada como ${mockUser.grado}`,
+              position: 'top',
+            });
+          }
+        } else {
+          throw new Error('Credenciales inválidas');
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Email o contraseña incorrectos',
+        text2: error.message || 'Error al iniciar sesión',
         position: 'top',
       });
     }
@@ -148,12 +226,17 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
+  // Retry conexión con servidor
+  const retryServerConnection = () => {
+    checkServerStatus();
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar style="light" backgroundColor={colors.primary} />
+      <StatusBar style="light" />
       
       <ScrollView 
         contentContainerStyle={styles.scrollContainer}
@@ -162,10 +245,30 @@ const LoginScreen = ({ navigation }) => {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Icon name="temple-buddhist" size={60} color={colors.primary} />
+            <Icon name="domain" size={60} color={colors.primary} />
           </View>
           <Text style={styles.title}>Orpheo</Text>
           <Text style={styles.subtitle}>Sistema de Gestión Masónica</Text>
+          
+          {/* Estado del servidor */}
+          <View style={styles.serverStatus}>
+            <Icon 
+              name={serverStatus?.success ? "cloud-check" : "cloud-alert"} 
+              size={16} 
+              color={serverStatus?.success ? colors.success : colors.warning} 
+            />
+            <Text style={[
+              styles.serverStatusText,
+              { color: serverStatus?.success ? colors.success : colors.warning }
+            ]}>
+              {serverStatus?.success ? 'Backend Conectado' : 'Backend No Disponible'}
+            </Text>
+            {!serverStatus?.success && (
+              <TouchableOpacity onPress={retryServerConnection} style={styles.retryButton}>
+                <Icon name="refresh" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Formulario */}
@@ -187,6 +290,7 @@ const LoginScreen = ({ navigation }) => {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={!isLoading}
               />
             </View>
             {formErrors.email && (
@@ -210,6 +314,7 @@ const LoginScreen = ({ navigation }) => {
                 placeholderTextColor={colors.textMuted}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                editable={!isLoading}
               />
               <TouchableOpacity
                 style={styles.eyeIcon}
@@ -227,42 +332,79 @@ const LoginScreen = ({ navigation }) => {
             )}
           </View>
 
+          {/* Recordar sesión */}
+          <View style={styles.rememberContainer}>
+            <Switch
+              value={rememberMe}
+              onValueChange={setRememberMe}
+              trackColor={{ false: colors.inputBorder, true: colors.primary }}
+              thumbColor={rememberMe ? colors.background : colors.textMuted}
+            />
+            <Text style={styles.rememberText}>Recordar mi sesión</Text>
+          </View>
+
+          {/* Información de intentos */}
+          {loginAttempts > 0 && (
+            <View style={styles.attemptsContainer}>
+              <Icon name="alert" size={16} color={colors.warning} />
+              <Text style={styles.attemptsText}>
+                Intentos fallidos: {loginAttempts}/5
+              </Text>
+            </View>
+          )}
+
           {/* Botón Login */}
           <TouchableOpacity
             style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
             onPress={handleLogin}
             disabled={isLoading}
           >
-            {isLoading ? (
-              <ActivityIndicator color={colors.background} size="small" />
-            ) : (
-              <>
-                <Icon name="login" size={20} color={colors.background} />
-                <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
-              </>
-            )}
+            <Icon name="login" size={20} color={colors.background} />
+            <Text style={styles.loginButtonText}>
+              {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Botones de prueba (solo para desarrollo) */}
+          {/* Toggle API Mode */}
           {__DEV__ && (
+            <View style={styles.apiModeContainer}>
+              <Text style={styles.apiModeLabel}>Modo API:</Text>
+              <Switch
+                value={useRealAPI}
+                onValueChange={setUseRealAPI}
+                trackColor={{ false: colors.inputBorder, true: colors.success }}
+                thumbColor={useRealAPI ? colors.background : colors.textMuted}
+                disabled={!serverStatus?.success}
+              />
+              <Text style={styles.apiModeText}>
+                {useRealAPI ? 'Real' : 'Mock'}
+              </Text>
+            </View>
+          )}
+
+          {/* Botones de prueba (solo para desarrollo) */}
+          {__DEV__ && !useRealAPI && (
             <View style={styles.testSection}>
               <Text style={styles.testTitle}>Cuentas de Prueba:</Text>
               <View style={styles.testButtons}>
                 <TouchableOpacity
                   style={styles.testButton}
                   onPress={() => fillTestCredentials('aprendiz')}
+                  disabled={isLoading}
                 >
                   <Text style={styles.testButtonText}>Aprendiz</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.testButton}
                   onPress={() => fillTestCredentials('companero')}
+                  disabled={isLoading}
                 >
                   <Text style={styles.testButtonText}>Compañero</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.testButton}
                   onPress={() => fillTestCredentials('maestro')}
+                  disabled={isLoading}
                 >
                   <Text style={styles.testButtonText}>Maestro</Text>
                 </TouchableOpacity>
@@ -273,9 +415,18 @@ const LoginScreen = ({ navigation }) => {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.versionText}>Versión 1.0.0</Text>
+          <Text style={styles.versionText}>Versión 2.0.0</Text>
+          <Text style={styles.statusText}>
+            {useRealAPI ? '🌐 Conectado al servidor' : '📱 Modo offline'}
+          </Text>
         </View>
       </ScrollView>
+
+      {/* Loading Overlay */}
+      <LoadingOverlay 
+        visible={isLoading} 
+        text={useRealAPI ? "Autenticando con servidor..." : "Iniciando sesión..."} 
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -315,6 +466,26 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  serverStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  serverStatusText: {
+    fontSize: fontSize.sm,
+    marginLeft: spacing.xs,
+    fontWeight: '500',
+  },
+  retryButton: {
+    marginLeft: spacing.xs,
+    padding: spacing.xs,
   },
   formContainer: {
     flex: 1,
@@ -343,7 +514,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingLeft: 50, // Espacio para el icono
+    paddingLeft: 50,
     fontSize: fontSize.md,
     color: colors.text,
   },
@@ -366,6 +537,29 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginLeft: spacing.xs,
   },
+  rememberContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  rememberText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  attemptsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+  },
+  attemptsText: {
+    fontSize: fontSize.sm,
+    color: colors.warning,
+    marginLeft: spacing.xs,
+  },
   loginButton: {
     backgroundColor: colors.primary,
     borderRadius: 12,
@@ -383,6 +577,26 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: '600',
     marginLeft: spacing.sm,
+  },
+  apiModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    padding: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+  },
+  apiModeLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginRight: spacing.sm,
+  },
+  apiModeText: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+    marginLeft: spacing.sm,
+    fontWeight: '500',
   },
   testSection: {
     marginTop: spacing.xl,
@@ -418,6 +632,11 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: fontSize.xs,
     color: colors.textMuted,
+  },
+  statusText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
 });
 

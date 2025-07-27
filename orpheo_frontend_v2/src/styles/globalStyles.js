@@ -1,316 +1,161 @@
 import { StyleSheet, Dimensions } from 'react-native';
-import { colors } from './colors';
 
+// Dimensiones de pantalla
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
+// Funciones helper para dimensiones responsivas
+export const wp = (percentage) => {
+  return (screenWidth * percentage) / 100;
+};
+
+export const hp = (percentage) => {
+  return (screenHeight * percentage) / 100;
+};
+
+// Constantes de dimensiones
+export const dimensions = {
+  screenWidth,
+  screenHeight,
+  headerHeight: 56,
+  tabBarHeight: 60,
+};
+
+// Espaciado consistente - IMPORTANTE: Definir todos los tamaños
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,    // ESTA ES LA LÍNEA IMPORTANTE
+  xl: 32,
+  xxl: 48,
+};
+
+// Tamaños de fuente - IMPORTANTE: Definir todos los tamaños
+export const fontSize = {
+  xs: 10,
+  sm: 12,
+  md: 14,
+  lg: 16,    // ESTA ES LA LÍNEA IMPORTANTE
+  xl: 18,
+  xxl: 20,
+  xxxl: 24,
+  huge: 32,
+};
+
+// Radios de borde
+export const borderRadius = {
+  sm: 4,
+  md: 8,
+  lg: 12,    // ESTA ES LA LÍNEA IMPORTANTE
+  xl: 16,
+  circle: 50,
+};
+
+// Colores básicos (copia de colors.js para evitar imports circulares)
+const colors = {
+  background: '#0F0F0F',
+  surface: '#1A1A1A',
+  primary: '#D4AF37',
+  text: '#FFFFFF',
+  textSecondary: '#B0B0B0',
+  textMuted: '#808080',
+  border: '#333333',
+};
+
+// Estilos globales súper básicos
 export const globalStyles = StyleSheet.create({
-  // Contenedores principales
+  // Contenedores
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   
-  screenContainer: {
+  centeredContainer: {
     flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  
-  safeContainer: {
-    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: colors.background,
   },
   
-  scrollContainer: {
-    flexGrow: 1,
-    padding: 16,
+  // Textos
+  heading1: {
+    fontSize: fontSize.xxxl,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: spacing.md,
   },
   
-  // Tarjetas y superficies
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 8,
-    shadowColor: colors.primary,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  heading2: {
+    fontSize: fontSize.xxl,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   
-  cardElevated: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 8,
-    shadowColor: colors.primary,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+  bodyText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    lineHeight: fontSize.md * 1.4,
   },
   
   // Botones
-  button: {
+  primaryButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
   },
   
-  buttonSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  
-  buttonDisabled: {
-    backgroundColor: colors.disabled,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  
-  buttonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  
-  buttonTextSecondary: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  
-  // Inputs
-  input: {
+  // Cards
+  card: {
     backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: colors.text,
-    fontSize: 16,
   },
   
-  inputFocused: {
-    borderColor: colors.primary,
-  },
-  
-  inputError: {
-    borderColor: colors.error,
-  },
-  
-  // Labels y texto
-  label: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  
-  title: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  
-  text: {
-    color: colors.text,
-    fontSize: 16,
-  },
-  
-  textSecondary: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  
-  textMuted: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  
-  textBold: {
-    fontWeight: 'bold',
-  },
-  
-  // Headers
-  headerTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  
-  headerSubtitle: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  
-  // Estados y badges
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  
-  badgeSuccess: {
-    backgroundColor: colors.success + '20',
-  },
-  
-  badgeWarning: {
-    backgroundColor: colors.warning + '20',
-  },
-  
-  badgeError: {
-    backgroundColor: colors.error + '20',
-  },
-  
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  
-  badgeTextSuccess: {
-    color: colors.success,
-  },
-  
-  badgeTextWarning: {
-    color: colors.warning,
-  },
-  
-  badgeTextError: {
-    color: colors.error,
-  },
-  
-  // Layout utilities
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  
-  spaceBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  flex1: {
-    flex: 1,
-  },
-  
-  // Márgenes y padding
-  mt8: { marginTop: 8 },
-  mt16: { marginTop: 16 },
-  mt24: { marginTop: 24 },
-  mb8: { marginBottom: 8 },
-  mb16: { marginBottom: 16 },
-  mb24: { marginBottom: 24 },
-  ml8: { marginLeft: 8 },
-  mr8: { marginRight: 8 },
-  
-  p8: { padding: 8 },
-  p16: { padding: 16 },
-  p24: { padding: 24 },
-  px8: { paddingHorizontal: 8 },
-  px16: { paddingHorizontal: 16 },
-  py8: { paddingVertical: 8 },
-  py16: { paddingVertical: 16 },
-  
-  // Separadores
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 8,
-  },
-  
-  // Loading states
+  // Loading
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  
-  loadingText: {
-    color: colors.textSecondary,
-    fontSize: 16,
-    marginTop: 16,
-  },
-  
-  // Error states
-  errorContainer: {
-    backgroundColor: colors.error + '20',
-    padding: 16,
-    borderRadius: 8,
-    margin: 16,
-  },
-  
-  errorText: {
-    color: colors.error,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  
-  // Empty states
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 16,
-  },
 });
 
-// Dimensiones responsive
-export const dimensions = {
-  screenWidth,
-  screenHeight,
-  isSmallScreen: screenWidth < 375,
-  isLargeScreen: screenWidth > 414,
-  cardWidth: screenWidth - 32,
-  halfCardWidth: (screenWidth - 48) / 2,
+// Utilidades para Safe Area y Tab Bar
+export const safeAreaUtils = {
+  // Contenedor con safe area automático
+  safeContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  
+  // Contenedor de contenido con margen para tab bar
+  contentContainer: {
+    flex: 1,
+    paddingBottom: spacing.xl, // Espacio extra para tab bar
+  },
+  
+  // Padding para listas que evita el tab bar
+  listContentPadding: {
+    paddingBottom: 100, // Espacio suficiente para tab bar + safe area
+  },
+  
+  // Padding para modales
+  modalPadding: {
+    paddingTop: 20,
+    paddingBottom: 34, // iOS safe area bottom
+  },
 };
 
-// Función para responsive font size
-export const responsiveFontSize = (size) => {
-  const scale = screenWidth / 375; // Base width iPhone X
-  const newSize = size * scale;
-  
-  if (newSize < size * 0.85) return size * 0.85;
-  if (newSize > size * 1.15) return size * 1.15;
-  
-  return newSize;
-};
+// Función para obtener padding dinámico basado en tab bar
+export const getTabBarPadding = (tabBarHeight = 80) => ({
+  paddingBottom: tabBarHeight + spacing.md,
+});
 
 export default globalStyles;

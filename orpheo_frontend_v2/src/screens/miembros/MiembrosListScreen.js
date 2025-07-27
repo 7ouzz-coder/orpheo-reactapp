@@ -7,543 +7,489 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
-  SafeAreaView,
-  TextInput,
-  Modal,
-  ActivityIndicator,
 } from 'react-native';
-import { useSelector, useDispatch } from 'react-redux';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // Redux
-import { 
-  fetchMiembros, 
-  selectMiembros, 
-  selectMiembrosLoading,
-  selectMiembrosError,
-  selectMiembrosFilters,
-  setFilters,
-  clearFilters,
-  clearError 
+import {
+  fetchMiembros,
+  fetchEstadisticas,
+  updateFiltros,
+  setPage,
+  resetFiltros,
+  selectMiembros,
+  selectLoadingList,
+  selectError,
+  selectFiltros,
+  selectPage,
+  selectTotalPages,
+  selectTotalMiembros,
+  selectEstadisticas,
 } from '../../store/slices/miembrosSlice';
 
+// Components
+import TabSafeView from '../../components/common/TabSafeView';
+import SearchBar from '../../components/common/SearchBar';
+import FilterModal from '../../components/common/FilterModal';
+import MiembroCard from '../../components/miembros/MiembroCard';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+
 // Styles
-import { colors, getGradoColor, getEstadoColor } from '../../styles/colors';
-import { globalStyles, dimensions } from '../../styles/globalStyles';
+import { colors } from '../../styles/colors';
+import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
 
-// Hook personalizado para debounce
-const useDebounce = (value, delay) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-};
-
-const MiembrosListScreen = () => {
-  const navigation = useNavigation();
+const MiembrosListScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   
-  // Redux state
-  const miembros = useSelector(selectMiembros);
-  const loading = useSelector(selectMiembrosLoading);
-  const error = useSelector(selectMiembrosError);
-  const filters = useSelector(selectMiembrosFilters);
-  
-  // Local state
-  const [searchQuery, setSearchQuery] = useState(filters.search || '');
+  // Estados locales
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [localFilters, setLocalFilters] = useState(filters);
   
-  // Debounced search
-  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  // Selectores Redux
+  const miembros = useSelector(selectMiembros);
+  const loading = useSelector(selectLoadingList);
+  const error = useSelector(selectError);
+  const filtros = useSelector(selectFiltros);
+  const page = useSelector(selectPage);
+  const totalPages = useSelector(selectTotalPages);
+  const totalMiembros = useSelector(selectTotalMiembros);
+  const estadisticas = useSelector(selectEstadisticas);
 
-  // Cargar miembros al inicializar y cuando cambia la búsqueda
+  // Cargar datos al enfocar la pantalla
   useFocusEffect(
     useCallback(() => {
-      loadMiembros();
+      console.log('🔄 MiembrosListScreen: Pantalla enfocada, cargando datos');
+      loadData();
     }, [])
   );
 
+  // Recargar cuando cambien los filtros
   useEffect(() => {
-    if (debouncedSearchQuery !== filters.search) {
-      dispatch(setFilters({ search: debouncedSearchQuery }));
-      loadMiembros();
-    }
-  }, [debouncedSearchQuery]);
+    console.log('🔄 Filtros cambiaron, recargando datos:', filtros);
+    loadData();
+  }, [filtros, page]);
 
-  const loadMiembros = async () => {
+  // Función para cargar datos
+  const loadData = async () => {
     try {
-      await dispatch(fetchMiembros()).unwrap();
+      // Cargar miembros y estadísticas en paralelo
+      await Promise.all([
+        dispatch(fetchMiembros()).unwrap(),
+        dispatch(fetchEstadisticas()).unwrap()
+      ]);
     } catch (error) {
-      console.error('Error loading miembros:', error);
+      console.error('❌ Error al cargar datos:', error);
     }
   };
 
-  const onRefresh = async () => {
+  // Pull to refresh
+  const handleRefresh = async () => {
     setRefreshing(true);
-    await loadMiembros();
-    setRefreshing(false);
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
-  const handleMiembroPress = (miembro) => {
-    navigation.navigate('MiembroDetail', { miembro });
-  };
-
-  const handleAddMiembro = () => {
-    navigation.navigate('MiembroForm');
+  // Manejar búsqueda
+  const handleSearch = (searchText) => {
+    console.log('🔍 Búsqueda:', searchText);
+    dispatch(updateFiltros({ search: searchText }));
   };
 
   // Aplicar filtros
-  const applyFilters = () => {
-    dispatch(setFilters(localFilters));
-    setShowFilters(false);
-    loadMiembros();
+  const handleApplyFilters = (newFilters) => {
+    console.log('🎛️ Aplicando filtros:', newFilters);
+    dispatch(updateFiltros(newFilters));
   };
 
   // Limpiar filtros
-  const clearAllFilters = () => {
-    const emptyFilters = {
-      search: '',
-      grado: null,
-      estado: 'activo',
-      vigencia: null,
-    };
-    setLocalFilters(emptyFilters);
-    setSearchQuery('');
-    dispatch(clearFilters());
-    setShowFilters(false);
-    loadMiembros();
+  const handleClearFilters = () => {
+    dispatch(resetFiltros());
   };
 
-  // Componente de tarjeta de miembro
-  const MiembroCard = ({ miembro }) => (
-    <TouchableOpacity
-      style={styles.miembroCard}
-      onPress={() => handleMiembroPress(miembro)}
-      activeOpacity={0.7}
-    >
-      {/* Header de la tarjeta */}
-      <View style={styles.cardHeader}>
-        <View style={styles.avatarContainer}>
-          <Icon name="account-circle" size={40} color={getGradoColor(miembro.grado)} />
-        </View>
-        <View style={styles.miembroInfo}>
-          <Text style={styles.miembroName}>
-            {miembro.nombres} {miembro.apellidos}
-          </Text>
-          <Text style={styles.miembroEmail}>{miembro.email}</Text>
-        </View>
-        <View style={styles.cardActions}>
-          <Icon name="chevron-right" size={20} color={colors.textMuted} />
-        </View>
-      </View>
+  // Navegar a detalle
+  const handleMiembroPress = (miembro) => {
+    navigation.navigate('MiembroDetail', { miembroId: miembro.id });
+  };
 
-      {/* Badges y información adicional */}
-      <View style={styles.cardDetails}>
-        <View style={styles.badges}>
-          <View style={[styles.badge, { backgroundColor: getGradoColor(miembro.grado) + '20' }]}>
-            <Text style={[styles.badgeText, { color: getGradoColor(miembro.grado) }]}>
-              {miembro.grado?.toUpperCase()}
-            </Text>
-          </View>
-          <View style={[styles.badge, { backgroundColor: getEstadoColor(miembro.estado) + '20' }]}>
-            <Text style={[styles.badgeText, { color: getEstadoColor(miembro.estado) }]}>
-              {miembro.estado?.toUpperCase()}
-            </Text>
-          </View>
+  // Navegar a editar
+  const handleEditPress = (miembro) => {
+    navigation.navigate('MiembroForm', { miembroId: miembro.id });
+  };
+
+  // Navegar a crear nuevo
+  const handleCreatePress = () => {
+    navigation.navigate('MiembroForm');
+  };
+
+  // Cargar más miembros (paginación)
+  const handleLoadMore = () => {
+    if (!loading && page < totalPages) {
+      console.log(`📄 Cargando página ${page + 1} de ${totalPages}`);
+      dispatch(setPage(page + 1));
+    }
+  };
+
+  // Renderizar item de la lista
+  const renderMiembro = ({ item }) => (
+    <MiembroCard
+      miembro={item}
+      onPress={handleMiembroPress}
+      onEdit={handleEditPress}
+    />
+  );
+
+  // Renderizar header con estadísticas
+  const renderHeader = () => (
+    <View style={styles.header}>
+      {/* Estadísticas resumidas */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{estadisticas.total}</Text>
+          <Text style={styles.statLabel}>Total</Text>
         </View>
         
-        {miembro.rut && (
-          <Text style={styles.miembroRut}>RUT: {miembro.rut}</Text>
-        )}
-        {miembro.telefono && (
-          <Text style={styles.miembroTelefono}>📞 {miembro.telefono}</Text>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: colors.info }]}>
+            {estadisticas.aprendices}
+          </Text>
+          <Text style={styles.statLabel}>Aprendices</Text>
+        </View>
+        
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: colors.warning }]}>
+            {estadisticas.companeros}
+          </Text>
+          <Text style={styles.statLabel}>Compañeros</Text>
+        </View>
+        
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: colors.success }]}>
+            {estadisticas.maestros}
+          </Text>
+          <Text style={styles.statLabel}>Maestros</Text>
+        </View>
+      </View>
+
+      {/* Información de resultados */}
+      <View style={styles.resultsInfo}>
+        <Text style={styles.resultsText}>
+          {totalMiembros > 0 
+            ? `${totalMiembros} miembro${totalMiembros !== 1 ? 's' : ''} encontrado${totalMiembros !== 1 ? 's' : ''}`
+            : 'No se encontraron miembros'
+          }
+        </Text>
+        
+        {Object.values(filtros).some(f => f && f !== 'todos' && f !== 'apellidos' && f !== 'ASC') && (
+          <TouchableOpacity onPress={handleClearFilters} style={styles.clearFiltersButton}>
+            <Icon name="filter-off" size={16} color={colors.primary} />
+            <Text style={styles.clearFiltersText}>Limpiar filtros</Text>
+          </TouchableOpacity>
         )}
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
-  // Componente de filtros
-  const FiltersModal = () => (
-    <Modal
-      visible={showFilters}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => setShowFilters(false)}
-    >
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={() => setShowFilters(false)}>
-            <Icon name="close" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.modalTitle}>Filtros</Text>
-          <TouchableOpacity onPress={clearAllFilters}>
-            <Text style={styles.clearText}>Limpiar</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.modalContent}>
-          {/* Filtro por grado */}
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Grado Masónico</Text>
-            <View style={styles.filterOptions}>
-              {['aprendiz', 'companero', 'maestro'].map((grado) => (
-                <TouchableOpacity
-                  key={grado}
-                  style={[
-                    styles.filterOption,
-                    localFilters.grado === grado && styles.filterOptionActive
-                  ]}
-                  onPress={() => setLocalFilters(prev => ({ 
-                    ...prev, 
-                    grado: prev.grado === grado ? null : grado 
-                  }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    localFilters.grado === grado && styles.filterOptionTextActive
-                  ]}>
-                    {grado.charAt(0).toUpperCase() + grado.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Filtro por estado */}
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Estado</Text>
-            <View style={styles.filterOptions}>
-              {['activo', 'inactivo', 'suspendido'].map((estado) => (
-                <TouchableOpacity
-                  key={estado}
-                  style={[
-                    styles.filterOption,
-                    localFilters.estado === estado && styles.filterOptionActive
-                  ]}
-                  onPress={() => setLocalFilters(prev => ({ 
-                    ...prev, 
-                    estado: prev.estado === estado ? null : estado 
-                  }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    localFilters.estado === estado && styles.filterOptionTextActive
-                  ]}>
-                    {estado.charAt(0).toUpperCase() + estado.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.modalFooter}>
-          <TouchableOpacity
-            style={styles.applyButton}
-            onPress={applyFilters}
-          >
-            <Text style={styles.applyButtonText}>Aplicar Filtros</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    </Modal>
-  );
-
-  // Estado de carga
-  if (loading && miembros.length === 0) {
+  // Renderizar footer de paginación
+  const renderFooter = () => {
+    if (!loading || page === 1) return <View style={styles.listFooter} />;
+    
     return (
-      <View style={globalStyles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={globalStyles.loadingText}>Cargando miembros...</Text>
+      <View style={[styles.footer, styles.listFooter]}>
+        <LoadingSpinner size="small" />
+        <Text style={styles.loadingText}>Cargando más miembros...</Text>
       </View>
     );
-  }
+  };
 
-  // Estado de error
+  // Renderizar estado vacío
+  const renderEmpty = () => {
+    if (loading && miembros.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <LoadingSpinner />
+          <Text style={styles.emptyText}>Cargando miembros...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon name="account-search" size={64} color={colors.textSecondary} />
+        <Text style={styles.emptyTitle}>No hay miembros</Text>
+        <Text style={styles.emptySubtitle}>
+          {filtros.search || filtros.grado !== 'todos' || filtros.estado !== 'todos'
+            ? 'Intenta ajustar los filtros de búsqueda'
+            : 'Comienza agregando el primer miembro'
+          }
+        </Text>
+        
+        {(!filtros.search && filtros.grado === 'todos' && filtros.estado === 'todos') && (
+          <TouchableOpacity style={styles.addButton} onPress={handleCreatePress}>
+            <Icon name="plus" size={20} color={colors.white} />
+            <Text style={styles.addButtonText}>Agregar Miembro</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  // Mostrar error si existe
   if (error && miembros.length === 0) {
     return (
-      <View style={globalStyles.center}>
-        <Icon name="alert-circle" size={48} color={colors.error} />
-        <Text style={globalStyles.errorText}>{error}</Text>
-        <TouchableOpacity style={globalStyles.button} onPress={loadMiembros}>
-          <Text style={globalStyles.buttonText}>Reintentar</Text>
-        </TouchableOpacity>
-      </View>
+      <TabSafeView>
+        <View style={styles.errorContainer}>
+          <Icon name="alert-circle" size={64} color={colors.error} />
+          <Text style={styles.errorTitle}>Error al cargar miembros</Text>
+          <Text style={styles.errorSubtitle}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Icon name="refresh" size={20} color={colors.white} />
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      </TabSafeView>
     );
   }
 
   return (
-    <SafeAreaView style={globalStyles.safeContainer}>
-      {/* Header con búsqueda y filtros */}
-      <View style={styles.headerContainer}>
-        <View style={styles.searchContainer}>
-          <Icon name="magnify" size={20} color={colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar miembros..."
-            placeholderTextColor={colors.placeholder}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Icon name="close-circle" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.filterButton}
-          onPress={() => setShowFilters(true)}
+    <TabSafeView>
+      <View style={styles.container}>
+        {/* Barra de búsqueda */}
+        <SearchBar
+          placeholder="Buscar por nombre, apellido o RUT..."
+          value={filtros.search}
+          onChangeText={handleSearch}
+          showFilterButton
+          onFilterPress={() => setShowFilters(true)}
+        />
+
+        {/* Lista de miembros */}
+        <FlatList
+          data={miembros}
+          renderItem={renderMiembro}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderHeader}
+          ListFooterComponent={renderFooter}
+          ListEmptyComponent={renderEmpty}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            miembros.length === 0 ? styles.emptyContent : null,
+            styles.listContent
+          ]}
+        />
+
+        {/* Botón flotante para agregar */}
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={handleCreatePress}
+          activeOpacity={0.8}
         >
-          <Icon name="filter" size={20} color={colors.primary} />
+          <Icon name="plus" size={24} color={colors.white} />
         </TouchableOpacity>
+
+        {/* Modal de filtros */}
+        <FilterModal
+          visible={showFilters}
+          onClose={() => setShowFilters(false)}
+          onApply={handleApplyFilters}
+          filters={filtros}
+          title="Filtrar Miembros"
+        />
       </View>
-
-      {/* Lista de miembros */}
-      <FlatList
-        data={miembros}
-        keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
-        renderItem={({ item }) => <MiembroCard miembro={item} />}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={() => (
-          <View style={globalStyles.emptyContainer}>
-            <Icon name="account-group" size={64} color={colors.textMuted} />
-            <Text style={globalStyles.emptyText}>
-              {searchQuery ? 'No se encontraron miembros' : 'No hay miembros registrados'}
-            </Text>
-            {!searchQuery && (
-              <TouchableOpacity style={globalStyles.button} onPress={handleAddMiembro}>
-                <Text style={globalStyles.buttonText}>Agregar Primer Miembro</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-        showsVerticalScrollIndicator={false}
-      />
-
-      {/* Botón flotante para agregar */}
-      <TouchableOpacity
-        style={styles.floatingButton}
-        onPress={handleAddMiembro}
-        activeOpacity={0.8}
-      >
-        <Icon name="plus" size={24} color={colors.background} />
-      </TouchableOpacity>
-
-      {/* Modal de filtros */}
-      <FiltersModal />
-    </SafeAreaView>
+    </TabSafeView>
   );
 };
 
 const styles = StyleSheet.create({
-  headerContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  
+  listContent: {
+    flexGrow: 1,
+  },
+  
+  header: {
+    backgroundColor: colors.background,
+    paddingBottom: spacing.md,
+  },
+  
+  statsContainer: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  
+  statCard: {
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: colors.surface,
+    flex: 1,
+  },
+  
+  statNumber: {
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  
+  statLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  
+  resultsInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginRight: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
-    color: colors.text,
-  },
-  filterButton: {
-    padding: 8,
-    backgroundColor: colors.primary + '20',
-    borderRadius: 8,
-  },
-  listContainer: {
-    padding: 16,
-  },
-  miembroCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarContainer: {
-    marginRight: 12,
-  },
-  miembroInfo: {
-    flex: 1,
-  },
-  miembroName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  miembroEmail: {
-    fontSize: 14,
+  
+  resultsText: {
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
   },
-  cardActions: {
-    padding: 4,
-  },
-  cardDetails: {
-    marginTop: 8,
-  },
-  badges: {
+  
+  clearFiltersButton: {
     flexDirection: 'row',
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 8,
+  
+  clearFiltersText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
   },
-  badgeText: {
-    fontSize: 10,
+  
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  
+  listFooter: {
+    paddingBottom: spacing.xl, // Espacio extra para el FAB
+  },
+  
+  loadingText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  
+  emptyContent: {
+    flexGrow: 1,
+  },
+  
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    paddingBottom: 120, // Espacio extra para tab bar y FAB
+  },
+  
+  emptyTitle: {
+    fontSize: fontSize.xl,
     fontWeight: 'bold',
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  miembroRut: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 2,
+  
+  emptySubtitle: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
   },
-  miembroTelefono: {
-    fontSize: 12,
-    color: colors.textMuted,
+  
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 25,
+    gap: spacing.sm,
   },
-  floatingButton: {
+  
+  addButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
+  
+  errorTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.error,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  
+  errorSubtitle: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.error,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 25,
+    gap: spacing.sm,
+  },
+  
+  retryButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  
+  fab: {
     position: 'absolute',
-    bottom: 20,
-    right: 20,
+    bottom: spacing.xl,
+    right: spacing.xl,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  // Modal styles
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  clearText: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  filterSection: {
-    marginBottom: 24,
-  },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  filterOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  filterOptionActive: {
-    backgroundColor: colors.primary,
-  },
-  filterOptionText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  filterOptionTextActive: {
-    color: colors.background,
-    fontWeight: '600',
-  },
-  modalFooter: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  applyButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  applyButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
+    ...globalStyles.shadowLg,
+    elevation: 8, // Para Android
   },
 });
 

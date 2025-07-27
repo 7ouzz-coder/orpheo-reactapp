@@ -1,3 +1,4 @@
+// src/store/store.js
 import { configureStore } from '@reduxjs/toolkit';
 import { persistStore, persistReducer } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -5,23 +6,25 @@ import { combineReducers } from '@reduxjs/toolkit';
 
 // Importar slices
 import authReducer from './slices/authSlice';
+import miembrosReducer from './slices/miembrosSlice';
 // TODO: Agregar más slices cuando estén listos
-// import miembrosReducer from './slices/miembrosSlice';
 // import documentosReducer from './slices/documentosSlice';
+// import uiReducer from './slices/uiSlice';
 
 // Configuración de persistencia
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
   whitelist: ['auth'], // Solo persistir auth por ahora
-  blacklist: [], // No persistir estos reducers
+  blacklist: ['miembros'], // No persistir miembros (se recargan desde API)
 };
 
 // Combinar reducers
 const rootReducer = combineReducers({
   auth: authReducer,
-  // miembros: miembrosReducer, // TODO: Descomentar cuando esté listo
+  miembros: miembrosReducer, // ✅ Ahora incluido
   // documentos: documentosReducer, // TODO: Descomentar cuando esté listo
+  // ui: uiReducer, // TODO: Descomentar cuando esté listo
 });
 
 // Reducer persistido
