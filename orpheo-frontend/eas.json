@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 3.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "buildConfiguration": "Debug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "aab"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "../path/to/api-key.json",
+        "track": "internal"
+      },
+      "ios": {
+        "appleId": "guillermo1858@gmail.com",
+        "ascAppId": "1234567890",
+        "appleTeamId": "ABCDEFGHIJ"
+      }
+    }
+  },
+  "update": {
+    "url": "https://u.expo.dev/[project-id]"
+  }
+}

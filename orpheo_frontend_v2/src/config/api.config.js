@@ -9,7 +9,7 @@ const API_CONFIG = {
       android: 'http://191.112.178.230:3001/api', // Emulador Android
       ios: 'http://191.112.178.230:3001/api',     // Simulador iOS
       web: 'http://191.112.178.230:3001/api',     // Web
-      default: 'http://191.112.178.230:3001/api', // IP local (cambiar por tu IP)
+      default: 'http://191.112.178.230:3001/api', // IP local
     },
     production: {
       default: '191.112.178.230:3001/api', // URL de producción

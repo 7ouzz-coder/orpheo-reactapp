@@ -1,26 +1,27 @@
-// src/screens/miembros/MiembroFormScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  StyleSheet,
+  ScrollView,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  StyleSheet,
   Alert,
+  ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
+  Platform, // ✅ IMPORT AGREGADO
 } from 'react-native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Redux
 import {
   createMiembro,
   updateMiembro,
   fetchMiembroById,
-  clearMiembroSeleccionado,
+  clearSelectedMiembro,
   selectMiembroSeleccionado,
   selectLoadingCreate,
   selectLoadingUpdate,
@@ -29,30 +30,26 @@ import {
 } from '../../store/slices/miembrosSlice';
 
 // Components
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-
-// Services
-import { miembrosService } from '../../services/miembrosService';
+import TabSafeView from '../../components/common/TabSafeView';
 
 // Styles
 import { colors } from '../../styles/colors';
 import { globalStyles, spacing, fontSize } from '../../styles/globalStyles';
 
-// Utils
-import { formatRUT } from '../../utils/helpers';
-
-const MiembroFormScreen = ({ route, navigation }) => {
-  const { miembroId } = route.params || {};
+const MiembroFormScreen = () => {
+  const route = useRoute();
+  const navigation = useNavigation();
   const dispatch = useDispatch();
-  const isEditing = !!miembroId;
-
-  // Selectores Redux
+  
+  const { miembroId } = route.params || {};
+  const isEdit = !!miembroId;
+  
   const miembro = useSelector(selectMiembroSeleccionado);
   const loadingCreate = useSelector(selectLoadingCreate);
   const loadingUpdate = useSelector(selectLoadingUpdate);
   const loadingDetail = useSelector(selectLoadingDetail);
   const error = useSelector(selectError);
-
+  
   const loading = loadingCreate || loadingUpdate;
 
   // Estado del formulario
@@ -64,63 +61,37 @@ const MiembroFormScreen = ({ route, navigation }) => {
     telefono: '',
     grado: 'aprendiz',
     estado: 'activo',
+    fecha_ingreso: '',
+    fecha_nacimiento: '',
     direccion: '',
-    ciudadNacimiento: '',
     profesion: '',
-    fechaNacimiento: null,
-    fechaIniciacion: null,
-    fechaIngreso: null,
+    ciudad_nacimiento: '',
   });
 
-  // Estados para validación
   const [errors, setErrors] = useState({});
-  const [touched, setTouched] = useState({});
+  const [hasChanges, setHasChanges] = useState(false);
 
-  // Estados para date pickers
-  const [showDatePicker, setShowDatePicker] = useState({
-    fechaNacimiento: false,
-    fechaIniciacion: false,
-    fechaIngreso: false,
-  });
-
-  // Cargar miembro si estamos editando
-  useEffect(() => {
-    if (isEditing) {
-      console.log(`✏️ Editando miembro ID: ${miembroId}`);
-      dispatch(fetchMiembroById(miembroId));
-    } else {
-      console.log('➕ Creando nuevo miembro');
-    }
-
-    // Configurar título del header
-    navigation.setOptions({
-      title: isEditing ? 'Editar Miembro' : 'Nuevo Miembro',
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={loading}
-          style={[styles.headerButton, { opacity: loading ? 0.5 : 1 }]}
-        >
-          <Text style={styles.headerButtonText}>
-            {loading ? 'Guardando...' : 'Guardar'}
-          </Text>
-        </TouchableOpacity>
-      ),
-    });
-
-    // Limpiar al desmontar
-    return () => {
-      if (isEditing) {
-        dispatch(clearMiembroSeleccionado());
+  // Cargar datos si es edición
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isEdit && miembroId) {
+        console.log(`📝 Cargando datos para editar miembro ID: ${miembroId}`);
+        dispatch(fetchMiembroById(miembroId));
       }
-    };
-  }, [miembroId, isEditing, navigation, loading]);
+      
+      return () => {
+        if (!isEdit) {
+          dispatch(clearSelectedMiembro());
+        }
+      };
+    }, [isEdit, miembroId, dispatch])
+  );
 
-  // Llenar formulario cuando se cargue el miembro
+  // Llenar formulario con datos del miembro
   useEffect(() => {
-    if (miembro && isEditing) {
+    if (isEdit && miembro) {
       console.log('📝 Llenando formulario con datos del miembro');
-      setFormData({
+      const newFormData = {
         nombres: miembro.nombres || '',
         apellidos: miembro.apellidos || '',
         rut: miembro.rut || '',
@@ -128,346 +99,500 @@ const MiembroFormScreen = ({ route, navigation }) => {
         telefono: miembro.telefono || '',
         grado: miembro.grado || 'aprendiz',
         estado: miembro.estado || 'activo',
+        fecha_ingreso: miembro.fecha_ingreso ? miembro.fecha_ingreso.split('T')[0] : '',
+        fecha_nacimiento: miembro.fecha_nacimiento ? miembro.fecha_nacimiento.split('T')[0] : '',
         direccion: miembro.direccion || '',
-        ciudadNacimiento: miembro.ciudadNacimiento || '',
         profesion: miembro.profesion || '',
-        fechaNacimiento: miembro.fechaNacimiento ? new Date(miembro.fechaNacimiento) : null,
-        fechaIniciacion: miembro.fechaIniciacion ? new Date(miembro.fechaIniciacion) : null,
-        fechaIngreso: miembro.fechaIngreso ? new Date(miembro.fechaIngreso) : null,
-      });
+        ciudad_nacimiento: miembro.ciudad_nacimiento || '',
+      };
+      setFormData(newFormData);
+      setHasChanges(false);
     }
-  }, [miembro, isEditing]);
+  }, [isEdit, miembro]);
 
-  // Manejar cambios en inputs
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Limpiar error del campo
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: null }));
+  // Validaciones del formulario
+  const validateForm = () => {
+    const newErrors = {};
+
+    // Campos obligatorios
+    if (!formData.nombres.trim()) {
+      newErrors.nombres = 'Los nombres son requeridos';
     }
 
-    // Formatear RUT automáticamente
-    if (field === 'rut') {
-      const formatted = miembrosService.formatRUT(value);
-      if (formatted !== value) {
-        setFormData(prev => ({ ...prev, [field]: formatted }));
+    if (!formData.apellidos.trim()) {
+      newErrors.apellidos = 'Los apellidos son requeridos';
+    }
+
+    if (!formData.rut.trim()) {
+      newErrors.rut = 'El RUT es requerido';
+    } else if (!/^\d{1,2}\.\d{3}\.\d{3}[-][0-9kK]{1}$/.test(formData.rut) && 
+               !/^\d{7,8}[-][0-9kK]{1}$/.test(formData.rut)) {
+      newErrors.rut = 'Formato de RUT inválido (ej: 12345678-9)';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'El email es requerido';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'El email no es válido';
+    }
+
+    // Validación de teléfono (opcional pero si se ingresa debe ser válido)
+    if (formData.telefono && !/^\+?[0-9\s\-\(\)]{8,15}$/.test(formData.telefono)) {
+      newErrors.telefono = 'Formato de teléfono inválido';
+    }
+
+    // Validación de fechas
+    if (formData.fecha_nacimiento) {
+      const fechaNac = new Date(formData.fecha_nacimiento);
+      const hoy = new Date();
+      if (fechaNac >= hoy) {
+        newErrors.fecha_nacimiento = 'La fecha de nacimiento debe ser anterior a hoy';
       }
     }
-  };
 
-  // Manejar blur de inputs
-  const handleInputBlur = (field) => {
-    setTouched(prev => ({ ...prev, [field]: true }));
-    validateField(field, formData[field]);
-  };
-
-  // Validar campo individual
-  const validateField = (field, value) => {
-    let error = null;
-
-    switch (field) {
-      case 'nombres':
-        if (!value?.trim()) {
-          error = 'Los nombres son requeridos';
-        }
-        break;
-      case 'apellidos':
-        if (!value?.trim()) {
-          error = 'Los apellidos son requeridos';
-        }
-        break;
-      case 'rut':
-        if (!value?.trim()) {
-          error = 'El RUT es requerido';
-        } else if (!miembrosService.validateRUT(value)) {
-          error = 'El RUT no es válido';
-        }
-        break;
-      case 'email':
-        if (value && !miembrosService.validateEmail(value)) {
-          error = 'El email no es válido';
-        }
-        break;
+    if (formData.fecha_ingreso) {
+      const fechaIng = new Date(formData.fecha_ingreso);
+      const hoy = new Date();
+      if (fechaIng > hoy) {
+        newErrors.fecha_ingreso = 'La fecha de ingreso no puede ser futura';
+      }
     }
 
-    setErrors(prev => ({ ...prev, [field]: error }));
-    return !error;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  // Validar todo el formulario
-  const validateForm = () => {
-    const validation = miembrosService.validateMiembroData(formData);
+  // Actualizar campo del formulario
+  const updateField = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    setHasChanges(true);
     
-    if (!validation.isValid) {
-      const newErrors = {};
-      validation.errors.forEach(error => {
-        if (error.includes('nombres')) newErrors.nombres = error;
-        if (error.includes('apellidos')) newErrors.apellidos = error;
-        if (error.includes('RUT')) newErrors.rut = error;
-        if (error.includes('email')) newErrors.email = error;
-      });
-      setErrors(newErrors);
-    }
-
-    return validation.isValid;
-  };
-
-  // Manejar cambio de fecha
-  const handleDateChange = (field, event, selectedDate) => {
-    setShowDatePicker(prev => ({ ...prev, [field]: false }));
-    
-    if (selectedDate) {
-      handleInputChange(field, selectedDate);
+    // Limpiar error del campo si existe
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: null }));
     }
   };
 
   // Manejar guardado
   const handleSave = async () => {
-    console.log('💾 Intentando guardar miembro');
-
-    // Marcar todos los campos como touched
-    const allFields = ['nombres', 'apellidos', 'rut', 'email'];
-    const newTouched = {};
-    allFields.forEach(field => {
-      newTouched[field] = true;
-    });
-    setTouched(newTouched);
-
-    // Validar formulario
+    console.log('💾 Intentando guardar miembro...');
+    
     if (!validateForm()) {
       Alert.alert('Error de Validación', 'Por favor corrige los errores en el formulario');
       return;
     }
 
     try {
-      // Preparar datos para envío
-      const dataToSend = {
-        ...formData,
-        fechaNacimiento: formData.fechaNacimiento ? formData.fechaNacimiento.toISOString() : null,
-        fechaIniciacion: formData.fechaIniciacion ? formData.fechaIniciacion.toISOString() : null,
-        fechaIngreso: formData.fechaIngreso ? formData.fechaIngreso.toISOString() : null,
-      };
-
-      if (isEditing) {
-        await dispatch(updateMiembro({ id: miembroId, data: dataToSend })).unwrap();
-      } else {
-        await dispatch(createMiembro(dataToSend)).unwrap();
+      // Preparar datos para enviar
+      const dataToSend = { ...formData };
+      
+      // Convertir fechas a formato ISO si están presentes
+      if (dataToSend.fecha_ingreso) {
+        dataToSend.fecha_ingreso = new Date(dataToSend.fecha_ingreso).toISOString();
+      }
+      if (dataToSend.fecha_nacimiento) {
+        dataToSend.fecha_nacimiento = new Date(dataToSend.fecha_nacimiento).toISOString();
       }
 
-      console.log('✅ Miembro guardado exitosamente');
+      if (isEdit) {
+        console.log('📝 Actualizando miembro existente...');
+        await dispatch(updateMiembro({ 
+          id: miembroId, 
+          data: dataToSend 
+        })).unwrap();
+      } else {
+        console.log('➕ Creando nuevo miembro...');
+        await dispatch(createMiembro(dataToSend)).unwrap();
+      }
+      
+      // Éxito - volver a la pantalla anterior
+      setHasChanges(false);
       navigation.goBack();
+      
     } catch (error) {
       console.error('❌ Error al guardar miembro:', error);
+      Alert.alert(
+        'Error al Guardar',
+        error || (isEdit ? 'No se pudo actualizar el miembro' : 'No se pudo crear el miembro')
+      );
     }
   };
 
-  // Renderizar input de texto
-  const renderTextInput = (field, placeholder, options = {}) => {
-    const hasError = touched[field] && errors[field];
-    
-    return (
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>
-          {placeholder}
-          {options.required && <Text style={styles.required}> *</Text>}
-        </Text>
-        <TextInput
-          style={[
-            styles.textInput,
-            hasError && styles.textInputError
-          ]}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textSecondary}
-          value={formData[field]}
-          onChangeText={(value) => handleInputChange(field, value)}
-          onBlur={() => handleInputBlur(field)}
-          {...options}
-        />
-        {hasError && (
-          <Text style={styles.errorText}>{errors[field]}</Text>
-        )}
-      </View>
-    );
+  // Manejar cancelación con confirmación si hay cambios
+  const handleCancel = () => {
+    if (hasChanges) {
+      Alert.alert(
+        'Descartar Cambios',
+        '¿Estás seguro de que quieres descartar los cambios?',
+        [
+          { text: 'Continuar Editando', style: 'cancel' },
+          { 
+            text: 'Descartar', 
+            style: 'destructive',
+            onPress: () => navigation.goBack()
+          }
+        ]
+      );
+    } else {
+      navigation.goBack();
+    }
   };
 
-  // Renderizar selector
-  const renderSelector = (field, placeholder, options) => (
-    <View style={styles.inputContainer}>
-      <Text style={styles.inputLabel}>{placeholder}</Text>
-      <View style={styles.selectorContainer}>
-        {options.map((option) => (
-          <TouchableOpacity
-            key={option.value}
-            style={[
-              styles.selectorOption,
-              formData[field] === option.value && styles.selectorOptionSelected
-            ]}
-            onPress={() => handleInputChange(field, option.value)}
-          >
-            <Text style={[
-              styles.selectorOptionText,
-              formData[field] === option.value && styles.selectorOptionTextSelected
-            ]}>
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
+  // Formatear RUT automáticamente
+  const formatRut = (rut) => {
+    // Remover puntos y guiones existentes
+    const cleanRut = rut.replace(/[^0-9kK]/g, '');
+    
+    if (cleanRut.length <= 1) return cleanRut;
+    
+    // Separar dígito verificador
+    const body = cleanRut.slice(0, -1);
+    const dv = cleanRut.slice(-1);
+    
+    // Formatear cuerpo del RUT
+    let formattedBody = body;
+    if (body.length > 3) {
+      formattedBody = body.slice(0, -3) + '.' + body.slice(-3);
+    }
+    if (body.length > 6) {
+      formattedBody = body.slice(0, -6) + '.' + body.slice(-6, -3) + '.' + body.slice(-3);
+    }
+    
+    return formattedBody + '-' + dv;
+  };
 
-  // Renderizar date picker
-  const renderDatePicker = (field, placeholder) => (
-    <View style={styles.inputContainer}>
-      <Text style={styles.inputLabel}>{placeholder}</Text>
-      <TouchableOpacity
-        style={styles.dateInput}
-        onPress={() => setShowDatePicker(prev => ({ ...prev, [field]: true }))}
-      >
-        <Text style={[
-          styles.dateInputText,
-          !formData[field] && styles.dateInputPlaceholder
-        ]}>
-          {formData[field] 
-            ? formData[field].toLocaleDateString('es-CL')
-            : `Seleccionar ${placeholder.toLowerCase()}`
-          }
-        </Text>
-        <Icon name="calendar" size={20} color={colors.textSecondary} />
-      </TouchableOpacity>
+  const handleRutChange = (value) => {
+    const formatted = formatRut(value);
+    updateField('rut', formatted);
+  };
 
-      {showDatePicker[field] && (
-        <DateTimePicker
-          value={formData[field] || new Date()}
-          mode="date"
-          display="default"
-          onChange={(event, date) => handleDateChange(field, event, date)}
-          maximumDate={new Date()}
-        />
-      )}
-    </View>
-  );
+  // Opciones para selects
+  const gradoOptions = [
+    { value: 'aprendiz', label: 'Aprendiz', icon: 'hammer', color: '#10B981' },
+    { value: 'companero', label: 'Compañero', icon: 'cog', color: '#F59E0B' },
+    { value: 'maestro', label: 'Maestro', icon: 'crown', color: '#8B5CF6' },
+  ];
 
-  // Mostrar loading si estamos cargando datos
-  if (isEditing && loadingDetail) {
+  const estadoOptions = [
+    { value: 'activo', label: 'Activo', color: '#10B981' },
+    { value: 'inactivo', label: 'Inactivo', color: '#F59E0B' },
+    { value: 'suspendido', label: 'Suspendido', color: '#EF4444' },
+  ];
+
+  // Loading state
+  if (loadingDetail && isEdit && !miembro) {
     return (
-      <View style={styles.loadingContainer}>
-        <LoadingSpinner />
-        <Text style={styles.loadingText}>Cargando información del miembro...</Text>
-      </View>
+      <TabSafeView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Cargando datos del miembro...</Text>
+      </TabSafeView>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <TabSafeView>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Información básica */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información Básica</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+            <Icon name="close" size={24} color={colors.text} />
+          </TouchableOpacity>
           
-          {renderTextInput('nombres', 'Nombres', { 
-            required: true,
-            autoCapitalize: 'words'
-          })}
-          
-          {renderTextInput('apellidos', 'Apellidos', { 
-            required: true,
-            autoCapitalize: 'words'
-          })}
-          
-          {renderTextInput('rut', 'RUT', { 
-            required: true,
-            placeholder: 'Ej: 12.345.678-9'
-          })}
-        </View>
-
-        {/* Información de contacto */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información de Contacto</Text>
-          
-          {renderTextInput('email', 'Email', { 
-            keyboardType: 'email-address',
-            autoCapitalize: 'none'
-          })}
-          
-          {renderTextInput('telefono', 'Teléfono', { 
-            keyboardType: 'phone-pad',
-            placeholder: 'Ej: +56 9 1234 5678'
-          })}
-          
-          {renderTextInput('direccion', 'Dirección', { 
-            multiline: true,
-            numberOfLines: 2
-          })}
-        </View>
-
-        {/* Información masónica */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información Masónica</Text>
-          
-          {renderSelector('grado', 'Grado', [
-            { value: 'aprendiz', label: 'Aprendiz' },
-            { value: 'companero', label: 'Compañero' },
-            { value: 'maestro', label: 'Maestro' },
-          ])}
-          
-          {renderSelector('estado', 'Estado', [
-            { value: 'activo', label: 'Activo' },
-            { value: 'inactivo', label: 'Inactivo' },
-            { value: 'suspendido', label: 'Suspendido' },
-            { value: 'irradiado', label: 'Irradiado' },
-          ])}
-          
-          {renderDatePicker('fechaIniciacion', 'Fecha de Iniciación')}
-          {renderDatePicker('fechaIngreso', 'Fecha de Ingreso')}
-        </View>
-
-        {/* Información personal */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información Personal</Text>
-          
-          {renderDatePicker('fechaNacimiento', 'Fecha de Nacimiento')}
-          
-          {renderTextInput('ciudadNacimiento', 'Ciudad de Nacimiento', { 
-            autoCapitalize: 'words'
-          })}
-          
-          {renderTextInput('profesion', 'Profesión', { 
-            autoCapitalize: 'words'
-          })}
-        </View>
-
-        {/* Botón guardar en el contenido */}
-        <TouchableOpacity
-          style={[
-            styles.saveButton,
-            { opacity: loading ? 0.5 : 1 }
-          ]}
-          onPress={handleSave}
-          disabled={loading}
-        >
-          {loading ? (
-            <LoadingSpinner size="small" color={colors.white} />
-          ) : (
-            <Icon name="content-save" size={20} color={colors.white} />
-          )}
-          <Text style={styles.saveButtonText}>
-            {loading ? 'Guardando...' : (isEditing ? 'Actualizar Miembro' : 'Crear Miembro')}
+          <Text style={styles.headerTitle}>
+            {isEdit ? 'Editar Miembro' : 'Nuevo Miembro'}
           </Text>
-        </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={handleSave} 
+            style={[styles.saveHeaderButton, loading && styles.saveHeaderButtonDisabled]}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={styles.saveHeaderText}>Guardar</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
-        {/* Espacio extra para el teclado */}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <ScrollView 
+          style={styles.form} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Información Personal */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              <Icon name="account" size={20} color={colors.primary} /> Información Personal
+            </Text>
+
+            {/* Nombres */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nombres *</Text>
+              <TextInput
+                style={[styles.input, errors.nombres && styles.inputError]}
+                value={formData.nombres}
+                onChangeText={(value) => updateField('nombres', value)}
+                placeholder="Ingresa los nombres"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+              {errors.nombres && (
+                <Text style={styles.errorText}>{errors.nombres}</Text>
+              )}
+            </View>
+
+            {/* Apellidos */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Apellidos *</Text>
+              <TextInput
+                style={[styles.input, errors.apellidos && styles.inputError]}
+                value={formData.apellidos}
+                onChangeText={(value) => updateField('apellidos', value)}
+                placeholder="Ingresa los apellidos"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+              {errors.apellidos && (
+                <Text style={styles.errorText}>{errors.apellidos}</Text>
+              )}
+            </View>
+
+            {/* RUT */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>RUT *</Text>
+              <TextInput
+                style={[styles.input, errors.rut && styles.inputError]}
+                value={formData.rut}
+                onChangeText={handleRutChange}
+                placeholder="12345678-9"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+                maxLength={12}
+                returnKeyType="next"
+              />
+              {errors.rut && (
+                <Text style={styles.errorText}>{errors.rut}</Text>
+              )}
+            </View>
+
+            {/* Email */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email *</Text>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError]}
+                value={formData.email}
+                onChangeText={(value) => updateField('email', value.toLowerCase())}
+                placeholder="ejemplo@email.com"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+              {errors.email && (
+                <Text style={styles.errorText}>{errors.email}</Text>
+              )}
+            </View>
+
+            {/* Teléfono */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Teléfono</Text>
+              <TextInput
+                style={[styles.input, errors.telefono && styles.inputError]}
+                value={formData.telefono}
+                onChangeText={(value) => updateField('telefono', value)}
+                placeholder="+56912345678"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+                returnKeyType="next"
+              />
+              {errors.telefono && (
+                <Text style={styles.errorText}>{errors.telefono}</Text>
+              )}
+            </View>
+
+            {/* Fecha de Nacimiento */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Fecha de Nacimiento</Text>
+              <TextInput
+                style={[styles.input, errors.fecha_nacimiento && styles.inputError]}
+                value={formData.fecha_nacimiento}
+                onChangeText={(value) => updateField('fecha_nacimiento', value)}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+                returnKeyType="next"
+              />
+              {errors.fecha_nacimiento && (
+                <Text style={styles.errorText}>{errors.fecha_nacimiento}</Text>
+              )}
+            </View>
+
+            {/* Profesión */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Profesión</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.profesion}
+                onChangeText={(value) => updateField('profesion', value)}
+                placeholder="Ingresa la profesión"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* Ciudad de Nacimiento */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Ciudad de Nacimiento</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.ciudad_nacimiento}
+                onChangeText={(value) => updateField('ciudad_nacimiento', value)}
+                placeholder="Ingresa la ciudad de nacimiento"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* Dirección */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Dirección</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={formData.direccion}
+                onChangeText={(value) => updateField('direccion', value)}
+                placeholder="Ingresa la dirección completa"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
+          </View>
+
+          {/* Información Masónica */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              <Icon name="compass" size={20} color={colors.primary} /> Información Masónica
+            </Text>
+
+            {/* Grado */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Grado Masónico</Text>
+              <View style={styles.optionsContainer}>
+                {gradoOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.option,
+                      formData.grado === option.value && [
+                        styles.optionActive,
+                        { borderColor: option.color }
+                      ]
+                    ]}
+                    onPress={() => updateField('grado', option.value)}
+                  >
+                    <Icon 
+                      name={option.icon} 
+                      size={20} 
+                      color={formData.grado === option.value ? option.color : colors.textMuted} 
+                    />
+                    <Text style={[
+                      styles.optionText,
+                      formData.grado === option.value && [
+                        styles.optionTextActive,
+                        { color: option.color }
+                      ]
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Estado */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Estado</Text>
+              <View style={styles.optionsContainer}>
+                {estadoOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.option,
+                      formData.estado === option.value && [
+                        styles.optionActive,
+                        { borderColor: option.color }
+                      ]
+                    ]}
+                    onPress={() => updateField('estado', option.value)}
+                  >
+                    <Text style={[
+                      styles.optionText,
+                      formData.estado === option.value && [
+                        styles.optionTextActive,
+                        { color: option.color }
+                      ]
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Fecha de Ingreso */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Fecha de Ingreso a la Logia</Text>
+              <TextInput
+                style={[styles.input, errors.fecha_ingreso && styles.inputError]}
+                value={formData.fecha_ingreso}
+                onChangeText={(value) => updateField('fecha_ingreso', value)}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+                returnKeyType="done"
+              />
+              {errors.fecha_ingreso && (
+                <Text style={styles.errorText}>{errors.fecha_ingreso}</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Espaciado para botón */}
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
+
+        {/* Botón de Guardar Flotante */}
+        <View style={styles.saveContainer}>
+          <TouchableOpacity 
+            style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
+            onPress={handleSave}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color={colors.white} size="small" />
+            ) : (
+              <>
+                <Icon name="check" size={20} color={colors.white} />
+                <Text style={styles.saveButtonText}>
+                  {isEdit ? 'Actualizar' : 'Crear'} Miembro
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </TabSafeView>
   );
 };
 
@@ -477,144 +602,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   
-  content: {
-    flex: 1,
-  },
-  
-  headerButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  
-  headerButtonText: {
-    color: colors.primary,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  
-  section: {
-    marginBottom: spacing.lg,
-  },
-  
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  
-  inputContainer: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  
-  inputLabel: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  
-  required: {
-    color: colors.error,
-  },
-  
-  textInput: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: spacing.md,
-    fontSize: fontSize.md,
-    color: colors.text,
-    minHeight: 48,
-  },
-  
-  textInputError: {
-    borderColor: colors.error,
-  },
-  
-  errorText: {
-    fontSize: fontSize.sm,
-    color: colors.error,
-    marginTop: spacing.xs,
-  },
-  
-  selectorContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  
-  selectorOption: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  
-  selectorOptionSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  
-  selectorOptionText: {
-    fontSize: fontSize.sm,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  
-  selectorOptionTextSelected: {
-    color: colors.white,
-    fontWeight: '600',
-  },
-  
-  dateInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: spacing.md,
-    minHeight: 48,
-  },
-  
-  dateInputText: {
-    fontSize: fontSize.md,
-    color: colors.text,
-  },
-  
-  dateInputPlaceholder: {
-    color: colors.textSecondary,
-  },
-  
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    marginHorizontal: spacing.md,
-    marginVertical: spacing.lg,
-    padding: spacing.md,
-    borderRadius: 12,
-    gap: spacing.sm,
-  },
-  
-  saveButtonText: {
-    color: colors.white,
-    fontSize: fontSize.md,
-    fontWeight: 'bold',
-  },
-  
-  bottomSpacer: {
-    height: spacing.xxl,
-  },
-  
+  // Loading
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -623,9 +611,177 @@ const styles = StyleSheet.create({
   },
   
   loadingText: {
-    marginTop: spacing.md,
     fontSize: fontSize.md,
     color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  
+  cancelButton: {
+    padding: spacing.sm,
+  },
+  
+  headerTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  
+  saveHeaderButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  
+  saveHeaderButtonDisabled: {
+    opacity: 0.5,
+  },
+  
+  saveHeaderText: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+
+  // Form
+  form: {
+    flex: 1,
+  },
+  
+  section: {
+    backgroundColor: colors.surface,
+    margin: spacing.md,
+    marginBottom: 0,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  
+  sectionTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  // Input Groups
+  inputGroup: {
+    marginBottom: spacing.lg,
+  },
+  
+  label: {
+    fontSize: fontSize.md,
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  
+  input: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: fontSize.md,
+    color: colors.text,
+    minHeight: 48,
+  },
+  
+  inputError: {
+    borderColor: colors.error,
+    backgroundColor: colors.error + '10',
+  },
+  
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  
+  errorText: {
+    fontSize: fontSize.sm,
+    color: colors.error,
+    marginTop: spacing.xs,
+    marginLeft: spacing.xs,
+  },
+
+  // Options
+  optionsContainer: {
+    gap: spacing.sm,
+  },
+  
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+  },
+  
+  optionActive: {
+    backgroundColor: colors.background,
+    borderWidth: 2,
+  },
+  
+  optionText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  
+  optionTextActive: {
+    fontWeight: '600',
+  },
+
+  // Save Button
+  saveContainer: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: 25,
+    gap: spacing.sm,
+    minHeight: 50,
+  },
+  
+  saveButtonDisabled: {
+    opacity: 0.5,
+  },
+  
+  saveButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  
+  bottomSpacer: {
+    height: spacing.xl,
   },
 });
 

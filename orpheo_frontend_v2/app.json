@@ -1,29 +1,46 @@
 {
   "expo": {
-    "name": "orpheo_frontend_v2",
-    "slug": "orpheo_frontend_v2",
+    "name": "Orpheo Logia",
+    "slug": "orpheo-frontend-v2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0F0F0F"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.orpheo.logia"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0F0F0F"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.orpheo.logia"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/icon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "easid"
+      }
+    },
+    "plugins": [
+      [
+        "expo-dev-client",
+        {
+          "addGeneratedScheme": false
+        }
+      ]
+    ],
+    "scheme": "orpheo"
   }
 }
