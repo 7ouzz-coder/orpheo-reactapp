@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 // Configuración directa (sin imports externos para evitar errores)
 const API_CONFIG = {
   // URLs base según el entorno
-  BASE_URL: 'http://191.112.178.230:3001/api',
+  BASE_URL: 'http://191.112.176.187:3001/api',
   
   // Timeouts
   TIMEOUT: {
