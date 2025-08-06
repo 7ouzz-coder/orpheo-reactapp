@@ -7,10 +7,12 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Toast from 'react-native-toast-message';
 
 // Redux
 import {
@@ -19,7 +21,9 @@ import {
   updateFiltros,
   setPage,
   resetFiltros,
-  selectMiembros,
+  clearError,
+  deleteMiembro,
+  selectMiembrosToShow,
   selectLoadingList,
   selectError,
   selectFiltros,
@@ -27,10 +31,11 @@ import {
   selectTotalPages,
   selectTotalMiembros,
   selectEstadisticas,
+  selectHasMore,
+  selectActiveFiltersCount,
 } from '../../store/slices/miembrosSlice';
 
 // Components
-import TabSafeView from '../../components/common/TabSafeView';
 import SearchBar from '../../components/common/SearchBar';
 import FilterModal from '../../components/common/FilterModal';
 import MiembroCard from '../../components/miembros/MiembroCard';
@@ -38,7 +43,10 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 // Styles
 import { colors } from '../../styles/colors';
-import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
+import { wp, hp, fontSize, spacing } from '../../utils/dimensions';
+
+// Hook personalizado para debounce
+import { useDebounce } from '../../hooks/useDebounce';
 
 const MiembrosListScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -46,9 +54,10 @@ const MiembrosListScreen = ({ navigation }) => {
   // Estados locales
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState('');
   
   // Selectores Redux
-  const miembros = useSelector(selectMiembros);
+  const miembros = useSelector(selectMiembrosToShow);
   const loading = useSelector(selectLoadingList);
   const error = useSelector(selectError);
   const filtros = useSelector(selectFiltros);
@@ -56,31 +65,64 @@ const MiembrosListScreen = ({ navigation }) => {
   const totalPages = useSelector(selectTotalPages);
   const totalMiembros = useSelector(selectTotalMiembros);
   const estadisticas = useSelector(selectEstadisticas);
+  const hasMore = useSelector(selectHasMore);
+  const activeFiltersCount = useSelector(selectActiveFiltersCount);
+  
+  // Debounce para la búsqueda
+  const debouncedSearchText = useDebounce(searchText, 500);
 
-  // Cargar datos al enfocar la pantalla
+  // Cargar datos al montar y cuando se enfoca la pantalla
   useFocusEffect(
     useCallback(() => {
       console.log('🔄 MiembrosListScreen: Pantalla enfocada, cargando datos');
-      loadData();
+      loadInitialData();
     }, [])
   );
 
-  // Recargar cuando cambien los filtros
+  // Efecto para búsqueda con debounce
   useEffect(() => {
-    console.log('🔄 Filtros cambiaron, recargando datos:', filtros);
-    loadData();
-  }, [filtros, page]);
+    if (debouncedSearchText !== filtros.search) {
+      dispatch(updateFiltros({ search: debouncedSearchText }));
+    }
+  }, [debouncedSearchText, dispatch, filtros.search]);
 
-  // Función para cargar datos
-  const loadData = async () => {
+  // Efecto para recargar cuando cambien los filtros
+  useEffect(() => {
+    if (filtros.search !== '' || filtros.grado || filtros.estado) {
+      loadData();
+    }
+  }, [filtros]);
+
+  // Limpiar errores cuando se desmonta
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
+  // Función para cargar datos iniciales
+  const loadInitialData = async () => {
     try {
-      // Cargar miembros y estadísticas en paralelo
       await Promise.all([
         dispatch(fetchMiembros()).unwrap(),
         dispatch(fetchEstadisticas()).unwrap()
       ]);
     } catch (error) {
-      console.error('❌ Error al cargar datos:', error);
+      console.error('❌ Error cargando datos iniciales:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'No se pudieron cargar los miembros',
+      });
+    }
+  };
+
+  // Función para cargar datos
+  const loadData = async () => {
+    try {
+      await dispatch(fetchMiembros()).unwrap();
+    } catch (error) {
+      console.error('❌ Error cargando miembros:', error);
     }
   };
 
@@ -88,58 +130,117 @@ const MiembrosListScreen = ({ navigation }) => {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await loadData();
+      // Resetear página y cargar datos frescos
+      dispatch(setPage(1));
+      await loadInitialData();
     } finally {
       setRefreshing(false);
     }
   };
 
   // Manejar búsqueda
-  const handleSearch = (searchText) => {
-    console.log('🔍 Búsqueda:', searchText);
-    dispatch(updateFiltros({ search: searchText }));
+  const handleSearch = (text) => {
+    setSearchText(text);
   };
 
   // Aplicar filtros
   const handleApplyFilters = (newFilters) => {
     console.log('🎛️ Aplicando filtros:', newFilters);
     dispatch(updateFiltros(newFilters));
+    setShowFilters(false);
   };
 
   // Limpiar filtros
   const handleClearFilters = () => {
     dispatch(resetFiltros());
+    setSearchText('');
+    setShowFilters(false);
   };
 
-  // Navegar a detalle
+  // Navegar a detalle de miembro
   const handleMiembroPress = (miembro) => {
+    console.log('👤 Navegando a detalle del miembro:', miembro.id);
     navigation.navigate('MiembroDetail', { miembroId: miembro.id });
   };
 
-  // Navegar a editar
+  // Navegar a editar miembro
   const handleEditPress = (miembro) => {
-    navigation.navigate('MiembroForm', { miembroId: miembro.id });
+    console.log('✏️ Navegando a editar miembro:', miembro.id);
+    navigation.navigate('MiembroForm', { miembroId: miembro.id, mode: 'edit' });
   };
 
-  // Navegar a crear nuevo
+  // Navegar a crear nuevo miembro
   const handleCreatePress = () => {
-    navigation.navigate('MiembroForm');
+    console.log('➕ Navegando a crear nuevo miembro');
+    navigation.navigate('MiembroForm', { mode: 'create' });
+  };
+
+  // Manejar eliminación de miembro
+  const handleDeletePress = (miembro) => {
+    Alert.alert(
+      'Eliminar Miembro',
+      `¿Estás seguro de que deseas eliminar a ${miembro.nombres} ${miembro.apellidos}?`,
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dispatch(deleteMiembro(miembro.id)).unwrap();
+              Toast.show({
+                type: 'success',
+                text1: 'Miembro eliminado',
+                text2: `${miembro.nombres} ha sido eliminado exitosamente`,
+              });
+            } catch (error) {
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'No se pudo eliminar el miembro',
+              });
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Cargar más miembros (paginación)
   const handleLoadMore = () => {
-    if (!loading && page < totalPages) {
+    if (!loading && hasMore) {
       console.log(`📄 Cargando página ${page + 1} de ${totalPages}`);
       dispatch(setPage(page + 1));
     }
   };
 
-  // Renderizar item de la lista
-  const renderMiembro = ({ item }) => (
+  // Renderizar item de miembro
+  const renderMiembro = ({ item, index }) => (
     <MiembroCard
+      key={item.id}
       miembro={item}
       onPress={handleMiembroPress}
       onEdit={handleEditPress}
+      onLongPress={(miembro) => {
+        // Opciones adicionales en long press
+        Alert.alert(
+          miembro.nombres + ' ' + miembro.apellidos,
+          'Selecciona una acción',
+          [
+            { text: 'Ver Detalle', onPress: () => handleMiembroPress(miembro) },
+            { text: 'Editar', onPress: () => handleEditPress(miembro) },
+            { text: 'Eliminar', onPress: () => handleDeletePress(miembro), style: 'destructive' },
+            { text: 'Cancelar', style: 'cancel' },
+          ]
+        );
+      }}
+      style={[
+        styles.miembroCard,
+        index === miembros.length - 1 && styles.lastCard
+      ]}
     />
   );
 
@@ -180,137 +281,188 @@ const MiembrosListScreen = ({ navigation }) => {
         <Text style={styles.resultsText}>
           {totalMiembros > 0 
             ? `${totalMiembros} miembro${totalMiembros !== 1 ? 's' : ''} encontrado${totalMiembros !== 1 ? 's' : ''}`
-            : 'No se encontraron miembros'
+            : 'No hay miembros'
           }
         </Text>
         
-        {Object.values(filtros).some(f => f && f !== 'todos' && f !== 'apellidos' && f !== 'ASC') && (
-          <TouchableOpacity onPress={handleClearFilters} style={styles.clearFiltersButton}>
-            <Icon name="filter-off" size={16} color={colors.primary} />
-            <Text style={styles.clearFiltersText}>Limpiar filtros</Text>
+        {activeFiltersCount > 0 && (
+          <TouchableOpacity 
+            style={styles.clearFiltersButton}
+            onPress={handleClearFilters}
+          >
+            <Icon name="close-circle" size={wp(4)} color={colors.error} />
+            <Text style={styles.clearFiltersText}>
+              Limpiar filtros ({activeFiltersCount})
+            </Text>
           </TouchableOpacity>
         )}
       </View>
     </View>
   );
 
-  // Renderizar footer de paginación
+  // Renderizar footer con loading o botón cargar más
   const renderFooter = () => {
-    if (!loading || page === 1) return <View style={styles.listFooter} />;
+    if (loading && page > 1) {
+      return (
+        <View style={styles.footerLoading}>
+          <LoadingSpinner size="small" color={colors.primary} />
+          <Text style={styles.loadingText}>Cargando más miembros...</Text>
+        </View>
+      );
+    }
     
-    return (
-      <View style={[styles.footer, styles.listFooter]}>
-        <LoadingSpinner size="small" />
-        <Text style={styles.loadingText}>Cargando más miembros...</Text>
-      </View>
-    );
+    if (hasMore && !loading) {
+      return (
+        <TouchableOpacity style={styles.loadMoreButton} onPress={handleLoadMore}>
+          <Text style={styles.loadMoreText}>Cargar más miembros</Text>
+          <Icon name="chevron-down" size={wp(5)} color={colors.primary} />
+        </TouchableOpacity>
+      );
+    }
+    
+    if (miembros.length > 0 && !hasMore) {
+      return (
+        <View style={styles.endMessage}>
+          <Text style={styles.endMessageText}>
+            Has visto todos los miembros
+          </Text>
+        </View>
+      );
+    }
+    
+    return null;
   };
 
-  // Renderizar estado vacío
+  // Renderizar lista vacía
   const renderEmpty = () => {
-    if (loading && miembros.length === 0) {
+    if (loading) {
       return (
-        <View style={styles.emptyContainer}>
-          <LoadingSpinner />
-          <Text style={styles.emptyText}>Cargando miembros...</Text>
+        <View style={styles.loadingContainer}>
+          <LoadingSpinner size="large" />
+          <Text style={styles.loadingText}>Cargando miembros...</Text>
         </View>
       );
     }
 
+    const hasActiveFilters = activeFiltersCount > 0 || searchText.length > 0;
+
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="account-search" size={64} color={colors.textSecondary} />
-        <Text style={styles.emptyTitle}>No hay miembros</Text>
+        <Icon 
+          name={hasActiveFilters ? "account-search" : "account-plus"} 
+          size={wp(20)} 
+          color={colors.textSecondary} 
+        />
+        <Text style={styles.emptyTitle}>
+          {hasActiveFilters ? 'No se encontraron miembros' : 'No hay miembros registrados'}
+        </Text>
         <Text style={styles.emptySubtitle}>
-          {filtros.search || filtros.grado !== 'todos' || filtros.estado !== 'todos'
-            ? 'Intenta ajustar los filtros de búsqueda'
-            : 'Comienza agregando el primer miembro'
+          {hasActiveFilters 
+            ? 'Intenta cambiar los filtros de búsqueda o agregar un nuevo miembro.'
+            : 'Comienza agregando el primer miembro de la logia.'
           }
         </Text>
         
-        {(!filtros.search && filtros.grado === 'todos' && filtros.estado === 'todos') && (
-          <TouchableOpacity style={styles.addButton} onPress={handleCreatePress}>
-            <Icon name="plus" size={20} color={colors.white} />
-            <Text style={styles.addButtonText}>Agregar Miembro</Text>
+        <View style={styles.emptyActions}>
+          {hasActiveFilters && (
+            <TouchableOpacity style={styles.emptySecondaryButton} onPress={handleClearFilters}>
+              <Icon name="filter-remove" size={wp(4)} color={colors.textSecondary} />
+              <Text style={styles.emptySecondaryButtonText}>Limpiar filtros</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity style={styles.emptyPrimaryButton} onPress={handleCreatePress}>
+            <Icon name="account-plus" size={wp(4)} color={colors.white} />
+            <Text style={styles.emptyPrimaryButtonText}>Agregar miembro</Text>
           </TouchableOpacity>
-        )}
+        </View>
       </View>
     );
   };
 
-  // Mostrar error si existe
-  if (error && miembros.length === 0) {
-    return (
-      <TabSafeView>
-        <View style={styles.errorContainer}>
-          <Icon name="alert-circle" size={64} color={colors.error} />
-          <Text style={styles.errorTitle}>Error al cargar miembros</Text>
-          <Text style={styles.errorSubtitle}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-            <Icon name="refresh" size={20} color={colors.white} />
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      </TabSafeView>
-    );
-  }
-
   return (
-    <TabSafeView>
-      <View style={styles.container}>
-        {/* Barra de búsqueda */}
+    <SafeAreaView style={styles.container}>
+      {/* Header con búsqueda y filtros */}
+      <View style={styles.searchContainer}>
         <SearchBar
-          placeholder="Buscar por nombre, apellido o RUT..."
-          value={filtros.search}
-          onChangeText={handleSearch}
-          showFilterButton
-          onFilterPress={() => setShowFilters(true)}
+          placeholder="Buscar por nombre, email, RUT..."
+          value={searchText}
+          onSearch={handleSearch}
+          onClear={() => setSearchText('')}
+          style={styles.searchBar}
         />
-
-        {/* Lista de miembros */}
-        <FlatList
-          data={miembros}
-          renderItem={renderMiembro}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={renderHeader}
-          ListFooterComponent={renderFooter}
-          ListEmptyComponent={renderEmpty}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          }
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.3}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            miembros.length === 0 ? styles.emptyContent : null,
-            styles.listContent
-          ]}
-        />
-
-        {/* Botón flotante para agregar */}
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={handleCreatePress}
-          activeOpacity={0.8}
+        
+        <TouchableOpacity 
+          style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]}
+          onPress={() => setShowFilters(true)}
         >
-          <Icon name="plus" size={24} color={colors.white} />
+          <Icon 
+            name="filter-variant" 
+            size={wp(5)} 
+            color={activeFiltersCount > 0 ? colors.white : colors.textSecondary} 
+          />
+          {activeFiltersCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
-
-        {/* Modal de filtros */}
-        <FilterModal
-          visible={showFilters}
-          onClose={() => setShowFilters(false)}
-          onApply={handleApplyFilters}
-          filters={filtros}
-          title="Filtrar Miembros"
-        />
+        
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={handleCreatePress}
+        >
+          <Icon name="plus" size={wp(6)} color={colors.white} />
+        </TouchableOpacity>
       </View>
-    </TabSafeView>
+
+      {/* Lista de miembros */}
+      <FlatList
+        data={miembros}
+        renderItem={renderMiembro}
+        keyExtractor={(item) => item.id.toString()}
+        ListHeaderComponent={miembros.length > 0 ? renderHeader : null}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.3}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.listContainer,
+          miembros.length === 0 && styles.emptyListContainer
+        ]}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={10}
+        getItemLayout={(data, index) => ({
+          length: wp(25), // Altura estimada de cada item
+          offset: wp(25) * index,
+          index,
+        })}
+      />
+
+      {/* Modal de filtros */}
+      <FilterModal
+        visible={showFilters}
+        onClose={() => setShowFilters(false)}
+        onApply={handleApplyFilters}
+        onClear={handleClearFilters}
+        initialFilters={filtros}
+        title="Filtrar Miembros"
+      />
+
+      {/* Toast para notificaciones */}
+      <Toast />
+    </SafeAreaView>
   );
 };
 
@@ -319,177 +471,287 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  
-  listContent: {
+
+  // Header con búsqueda
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+
+  searchBar: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+
+  filterButton: {
+    width: wp(12),
+    height: wp(12),
+    borderRadius: wp(6),
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    position: 'relative',
+  },
+
+  filterButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+
+  filterBadge: {
+    position: 'absolute',
+    top: -spacing.xs,
+    right: -spacing.xs,
+    backgroundColor: colors.error,
+    borderRadius: wp(2.5),
+    minWidth: wp(5),
+    height: wp(5),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  filterBadgeText: {
+    color: colors.white,
+    fontSize: fontSize.xs,
+    fontWeight: 'bold',
+  },
+
+  addButton: {
+    width: wp(12),
+    height: wp(12),
+    borderRadius: wp(6),
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+
+  // Lista
+  listContainer: {
+    paddingBottom: spacing.xl,
+  },
+
+  emptyListContainer: {
     flexGrow: 1,
+    justifyContent: 'center',
   },
-  
+
+  miembroCard: {
+    marginVertical: spacing.xs,
+  },
+
+  lastCard: {
+    marginBottom: spacing.lg,
+  },
+
+  // Header con estadísticas
   header: {
-    backgroundColor: colors.background,
-    paddingBottom: spacing.md,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: wp(3),
+    marginHorizontal: spacing.md,
+    elevation: 1,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-  
+
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
   },
-  
+
   statCard: {
     alignItems: 'center',
     flex: 1,
   },
-  
+
   statNumber: {
     fontSize: fontSize.xl,
     fontWeight: 'bold',
-    color: colors.text,
+    color: colors.primary,
+    marginBottom: spacing.xs,
   },
-  
+
   statLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  
-  resultsInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  
-  resultsText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
-  
+
+  resultsInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+
+  resultsText: {
+    fontSize: fontSize.sm,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+
   clearFiltersButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    backgroundColor: colors.errorLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: wp(4),
   },
-  
+
   clearFiltersText: {
-    fontSize: fontSize.sm,
-    color: colors.primary,
+    fontSize: fontSize.xs,
+    color: colors.error,
+    marginLeft: spacing.xs,
+    fontWeight: '500',
   },
-  
-  footer: {
+
+  // Footer
+  footerLoading: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
-    gap: spacing.sm,
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
   },
-  
-  listFooter: {
-    paddingBottom: spacing.xl, // Espacio extra para el FAB
-  },
-  
+
   loadingText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    marginLeft: spacing.sm,
   },
-  
-  emptyContent: {
-    flexGrow: 1,
+
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: wp(2),
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginVertical: spacing.sm,
   },
-  
+
+  loadMoreText: {
+    fontSize: fontSize.md,
+    color: colors.primary,
+    fontWeight: '500',
+    marginRight: spacing.sm,
+  },
+
+  endMessage: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+  },
+
+  endMessageText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+
+  // Estados vacíos y de carga
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: hp(10),
+  },
+
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
-    paddingBottom: 120, // Espacio extra para tab bar y FAB
+    paddingHorizontal: spacing.xl,
+    paddingVertical: hp(5),
   },
-  
+
   emptyTitle: {
     fontSize: fontSize.xl,
     fontWeight: 'bold',
-    color: colors.text,
-    marginTop: spacing.md,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
-  
+
   emptySubtitle: {
     fontSize: fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: fontSize.md * 1.4,
     marginBottom: spacing.xl,
   },
-  
-  addButton: {
+
+  emptyActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+
+  emptyPrimaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 25,
-    gap: spacing.sm,
+    borderRadius: wp(2),
+    elevation: 2,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
-  
-  addButtonText: {
+
+  emptyPrimaryButtonText: {
     color: colors.white,
     fontSize: fontSize.md,
     fontWeight: '600',
+    marginLeft: spacing.sm,
   },
-  
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
+
+  emptySecondaryButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: wp(2),
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  
-  errorTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: 'bold',
-    color: colors.error,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  
-  errorSubtitle: {
-    fontSize: fontSize.md,
+
+  emptySecondaryButtonText: {
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.error,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: 25,
-    gap: spacing.sm,
-  },
-  
-  retryButtonText: {
-    color: colors.white,
     fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  
-  fab: {
-    position: 'absolute',
-    bottom: spacing.xl,
-    right: spacing.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...globalStyles.shadowLg,
-    elevation: 8, // Para Android
+    fontWeight: '500',
+    marginLeft: spacing.sm,
   },
 });
 

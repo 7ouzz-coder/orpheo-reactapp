@@ -10,7 +10,7 @@ import Toast from 'react-native-toast-message';
 import { store, persistor } from './src/store/store';
 
 // Navigation
-import AppNavigator from './src/components/navigation/Appnavigator';
+import AppNavigator from './src/components/navigation/AppNavigator';
 
 // Components
 import LoadingSpinner from './src/components/common/LoadingSpinner';

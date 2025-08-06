@@ -1,256 +1,235 @@
 import { Dimensions, PixelRatio, Platform } from 'react-native';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// Obtener dimensiones de la pantalla
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// ===== SISTEMA UNIVERSAL DE DIMENSIONES =====
-// Se adapta automáticamente a cualquier dispositivo Android/iOS
+// Dimensiones base para el diseño (basado en iPhone 11)
+const baseWidth = 375;
+const baseHeight = 812;
 
-// Calcular factor de escala basado en el ancho de pantalla
-const widthBaseScale = SCREEN_WIDTH / 375; // Referencia: iPhone X
-const heightBaseScale = SCREEN_HEIGHT / 812;
+/**
+ * Función para escalar ancho basado en el ancho de la pantalla
+ * @param {number} size - Tamaño en píxeles basado en el diseño base
+ * @returns {number} - Tamaño escalado
+ */
+export const wp = (size) => {
+  const percentage = (size / baseWidth) * 100;
+  return PixelRatio.roundToNearestPixel((screenWidth * percentage) / 100);
+};
 
-// Función para normalizar tamaños
-const normalize = (size) => {
-  const newSize = size * widthBaseScale;
+/**
+ * Función para escalar alto basado en la altura de la pantalla
+ * @param {number} size - Tamaño en píxeles basado en el diseño base
+ * @returns {number} - Tamaño escalado
+ */
+export const hp = (size) => {
+  const percentage = (size / baseHeight) * 100;
+  return PixelRatio.roundToNearestPixel((screenHeight * percentage) / 100);
+};
+
+/**
+ * Escalado para fuentes
+ * @param {number} size - Tamaño de fuente base
+ * @returns {number} - Tamaño de fuente escalado
+ */
+export const scale = (size) => {
+  const newSize = (size * screenWidth) / baseWidth;
   return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-// Función para normalizar alturas
-const normalizeHeight = (size) => {
-  const newSize = size * heightBaseScale;
+/**
+ * Escalado moderado para fuentes (menos agresivo)
+ * @param {number} size - Tamaño de fuente base
+ * @param {number} factor - Factor de escalado (default: 0.5)
+ * @returns {number} - Tamaño de fuente escalado moderadamente
+ */
+export const moderateScale = (size, factor = 0.5) => {
+  const newSize = size + (scale(size) - size) * factor;
   return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-// ===== FUNCIONES PRINCIPALES =====
-
-// Ancho responsivo (Width Percentage)
-export const wp = (percentage) => {
-  const value = (percentage * SCREEN_WIDTH) / 100;
-  return Math.round(PixelRatio.roundToNearestPixel(value));
-};
-
-// Alto responsivo (Height Percentage)
-export const hp = (percentage) => {
-  const value = (percentage * SCREEN_HEIGHT) / 100;
-  return Math.round(PixelRatio.roundToNearestPixel(value));
-};
-
-// Función de tamaño responsivo para elementos generales
-export const rs = (size) => {
-  return normalize(size);
-};
-
-// Función de fuente responsiva
-export const fs = (size) => {
-  // Factor más conservador para fuentes
-  const scale = Math.min(widthBaseScale, 1.2);
-  const newSize = size * scale;
-  return Math.round(PixelRatio.roundToNearestPixel(newSize));
-};
-
-// ===== DETECCIÓN DE DISPOSITIVO =====
-const aspectRatio = SCREEN_HEIGHT / SCREEN_WIDTH;
-
+// Información del dispositivo
 export const deviceInfo = {
-  width: SCREEN_WIDTH,
-  height: SCREEN_HEIGHT,
-  aspectRatio,
-  isTablet: SCREEN_WIDTH >= 768,
-  isSmallScreen: SCREEN_WIDTH < 360,
-  isMediumScreen: SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414,
-  isLargeScreen: SCREEN_WIDTH >= 414,
-  isVeryLargeScreen: SCREEN_WIDTH >= 500,
-  platform: Platform.OS,
-  isIOS: Platform.OS === 'ios',
-  isAndroid: Platform.OS === 'android',
+  width: screenWidth,
+  height: screenHeight,
+  isSmallScreen: screenWidth < 375,
+  isTablet: screenWidth >= 768,
+  isLandscape: screenWidth > screenHeight,
   pixelRatio: PixelRatio.get(),
   fontScale: PixelRatio.getFontScale(),
 };
 
-// ===== ESPACIADOS UNIVERSALES =====
-export const spacing = {
-  xs: rs(4),    // 4px base
-  sm: rs(8),    // 8px base
-  md: rs(16),   // 16px base
-  lg: rs(24),   // 24px base
-  xl: rs(32),   // 32px base
-  xxl: rs(48),  // 48px base
-};
-
-// ===== TAMAÑOS DE FUENTE UNIVERSALES =====
+// Tamaños de fuente escalados
 export const fontSize = {
-  xs: fs(10),
-  sm: fs(12),
-  md: fs(14),
-  lg: fs(16),
-  xl: fs(18),
-  xxl: fs(20),
-  title: fs(22),
-  header: fs(26),
-  hero: fs(30),
+  xs: moderateScale(10),
+  sm: moderateScale(12),
+  md: moderateScale(14),
+  lg: moderateScale(16),
+  xl: moderateScale(18),
+  xxl: moderateScale(20),
+  xxxl: moderateScale(24),
+  h1: moderateScale(32),
+  h2: moderateScale(28),
+  h3: moderateScale(24),
+  h4: moderateScale(20),
+  h5: moderateScale(18),
+  h6: moderateScale(16),
 };
 
-// ===== DIMENSIONES ESPECÍFICAS =====
+// Espaciado escalado
+export const spacing = {
+  xs: wp(4),
+  sm: wp(8),
+  md: wp(12),
+  lg: wp(16),
+  xl: wp(20),
+  xxl: wp(24),
+  xxxl: wp(32),
+};
 
-// Altura mínima de elementos tocables (44px en iOS, 48px en Android)
-export const touchableHeight = Platform.OS === 'ios' ? rs(44) : rs(48);
-
-// Bordes redondeados adaptativos
+// Radios de borde escalados
 export const borderRadius = {
-  xs: rs(2),
-  sm: rs(4),
-  md: rs(8),
-  lg: rs(12),
-  xl: rs(16),
-  round: rs(50), // Para elementos circulares
+  xs: wp(2),
+  sm: wp(4),
+  md: wp(6),
+  lg: wp(8),
+  xl: wp(12),
+  round: wp(50), // Para elementos circulares
 };
 
-// Elevaciones para sombras (más apropiadas para cada plataforma)
-export const elevation = {
-  light: Platform.OS === 'ios' ? {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  } : { elevation: 2 },
+// Tamaños de iconos escalados
+export const iconSize = {
+  xs: wp(12),
+  sm: wp(16),
+  md: wp(20),
+  lg: wp(24),
+  xl: wp(28),
+  xxl: wp(32),
+};
+
+// Alturas comunes escaladas
+export const heights = {
+  statusBar: hp(6), // Aproximado para la barra de estado
+  header: hp(8),
+  tabBar: hp(12),
+  button: hp(6),
+  input: hp(6),
+  listItem: hp(10),
+  card: hp(15),
+};
+
+// Anchos comunes escalados
+export const widths = {
+  full: screenWidth,
+  half: screenWidth / 2,
+  third: screenWidth / 3,
+  quarter: screenWidth / 4,
+  button: wp(40),
+  icon: wp(6),
+  avatar: wp(12),
+};
+
+// Funciones utilitarias adicionales
+export const isIOS = Platform.OS === 'ios';
+export const isAndroid = Platform.OS === 'android';
+
+/**
+ * Obtener dimensiones seguras considerando notches y barras
+ * @returns {Object} - Dimensiones seguras
+ */
+export const getSafeAreaDimensions = () => {
+  // En un proyecto real, usarías react-native-safe-area-context
+  const safeAreaTop = isIOS ? (deviceInfo.height >= 812 ? 44 : 20) : 0;
+  const safeAreaBottom = isIOS ? (deviceInfo.height >= 812 ? 34 : 0) : 0;
   
-  medium: Platform.OS === 'ios' ? {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-  } : { elevation: 4 },
-  
-  heavy: Platform.OS === 'ios' ? {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  } : { elevation: 8 },
+  return {
+    top: safeAreaTop,
+    bottom: safeAreaBottom,
+    height: screenHeight - safeAreaTop - safeAreaBottom,
+    width: screenWidth,
+  };
 };
 
-// ===== HELPERS ADICIONALES =====
-
-// Función para obtener width específico para grids
-export const getGridItemWidth = (columns, margin = spacing.md) => {
-  const totalMargin = margin * (columns + 1);
-  return (SCREEN_WIDTH - totalMargin) / columns;
+/**
+ * Calcular dimensiones para modales y overlays
+ * @param {number} widthPercentage - Porcentaje del ancho de pantalla
+ * @param {number} heightPercentage - Porcentaje de la altura de pantalla
+ * @returns {Object} - Dimensiones del modal
+ */
+export const getModalDimensions = (widthPercentage = 90, heightPercentage = 80) => {
+  return {
+    width: (screenWidth * widthPercentage) / 100,
+    height: (screenHeight * heightPercentage) / 100,
+  };
 };
 
-// Función para elementos cuadrados responsivos
-export const getSquareSize = (percentage) => {
-  const size = wp(percentage);
-  return { width: size, height: size };
+/**
+ * Verificar si es una pantalla pequeña
+ * @returns {boolean}
+ */
+export const isSmallScreen = () => screenWidth < 375 || screenHeight < 667;
+
+/**
+ * Verificar si es tablet
+ * @returns {boolean}
+ */
+export const isTablet = () => screenWidth >= 768;
+
+/**
+ * Obtener orientación actual
+ * @returns {string} - 'portrait' o 'landscape'
+ */
+export const getOrientation = () => {
+  return screenWidth > screenHeight ? 'landscape' : 'portrait';
 };
 
-// Función para aspect ratio responsivo
-export const getAspectRatioSize = (width, aspectRatio) => {
-  const w = wp(width);
-  const h = w / aspectRatio;
-  return { width: w, height: h };
+// Breakpoints para responsive design
+export const breakpoints = {
+  xs: 0,
+  sm: 375,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
 };
 
-// ===== CONSTANTES ÚTILES =====
-export const isIPhoneX = () => {
-  return (
-    Platform.OS === 'ios' &&
-    !Platform.isPad &&
-    !Platform.isTVOS &&
-    (SCREEN_HEIGHT >= 812 || SCREEN_WIDTH >= 812)
-  );
+/**
+ * Obtener breakpoint actual
+ * @returns {string} - Breakpoint actual
+ */
+export const getCurrentBreakpoint = () => {
+  if (screenWidth >= breakpoints.xl) return 'xl';
+  if (screenWidth >= breakpoints.lg) return 'lg';
+  if (screenWidth >= breakpoints.md) return 'md';
+  if (screenWidth >= breakpoints.sm) return 'sm';
+  return 'xs';
 };
 
-export const getStatusBarHeight = () => {
-  if (Platform.OS === 'ios') {
-    return isIPhoneX() ? 44 : 20;
-  } else {
-    return 0; // Android maneja esto automáticamente con SafeAreaView
-  }
+// Exportaciones adicionales para compatibilidad
+export const screenDimensions = {
+  width: screenWidth,
+  height: screenHeight,
 };
 
-export const getBottomSpace = () => {
-  return isIPhoneX() ? 34 : 0;
-};
-
-// ===== UTILIDADES DE LAYOUT =====
-export const layout = {
-  // Contenedor principal con padding responsivo
-  containerPadding: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  
-  // Card estándar
-  cardStyle: {
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    ...elevation.light,
-  },
-  
-  // Botón estándar
-  buttonStyle: {
-    height: touchableHeight,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...elevation.light,
-  },
-  
-  // Input estándar
-  inputStyle: {
-    height: touchableHeight,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    fontSize: fontSize.md,
-    borderWidth: 1,
-  },
-};
-
-// ===== LOG DE DEBUG (solo en desarrollo) =====
-if (__DEV__) {
-  console.log('📱 Dimensiones Universales - Device Info:', {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    aspectRatio: aspectRatio.toFixed(2),
-    type: deviceInfo.isTablet ? 'Tablet' : 'Phone',
-    size: deviceInfo.isSmallScreen ? 'Small' : 
-          deviceInfo.isMediumScreen ? 'Medium' : 
-          deviceInfo.isLargeScreen ? 'Large' : 'Very Large',
-    platform: deviceInfo.platform,
-    pixelRatio: deviceInfo.pixelRatio,
-    fontScale: deviceInfo.fontScale,
-  });
-  
-  console.log('📏 Spacing calculado:', spacing);
-  console.log('🔤 FontSize calculado:', fontSize);
-}
-
-// ===== EXPORTACIONES =====
-export {
-  SCREEN_WIDTH,
-  SCREEN_HEIGHT,
-  normalize,
-  normalizeHeight,
-};
+export const guidelineBaseWidth = baseWidth;
+export const guidelineBaseHeight = baseHeight;
 
 export default {
   wp,
   hp,
-  rs,
-  fs,
-  spacing,
+  scale,
+  moderateScale,
   fontSize,
+  spacing,
   borderRadius,
-  elevation,
-  layout,
+  iconSize,
+  heights,
+  widths,
   deviceInfo,
-  touchableHeight,
-  getGridItemWidth,
-  getSquareSize,
-  getAspectRatioSize,
-  isIPhoneX,
-  getStatusBarHeight,
-  getBottomSpace,
+  screenDimensions,
+  isSmallScreen,
+  isTablet,
+  getOrientation,
+  getSafeAreaDimensions,
+  getModalDimensions,
+  getCurrentBreakpoint,
 };

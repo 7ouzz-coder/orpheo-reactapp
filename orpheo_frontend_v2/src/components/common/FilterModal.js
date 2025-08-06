@@ -2,398 +2,482 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
   Modal,
+  TouchableOpacity,
   ScrollView,
+  StyleSheet,
   Animated,
+  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { colors, colorOpacity } from '../../styles/colors';
+import { wp, hp, fontSize, spacing } from '../../utils/dimensions';
 
-// Styles
-import { colors } from '../../styles/colors';
-import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
+const { height: screenHeight } = Dimensions.get('window');
 
 const FilterModal = ({
   visible = false,
   onClose,
   onApply,
-  filters = {},
+  onClear,
+  initialFilters = {},
   title = 'Filtros',
 }) => {
-  const [localFilters, setLocalFilters] = useState(filters);
-  const [slideAnim] = useState(new Animated.Value(hp(100)));
+  // Estados locales para los filtros
+  const [filters, setFilters] = useState({
+    grado: null,
+    estado: null,
+    fechaIngreso: null,
+    ordenarPor: 'nombre',
+    orden: 'asc',
+    ...initialFilters,
+  });
+
+  // Animación del modal
+  const slideAnim = useState(new Animated.Value(screenHeight))[0];
+  const backdropOpacity = useState(new Animated.Value(0))[0];
 
   // Opciones de filtros
-  const gradoOptions = [
-    { key: 'todos', label: 'Todos los Grados', icon: 'account-group' },
-    { key: 'aprendiz', label: 'Aprendiz', icon: 'school' },
-    { key: 'companero', label: 'Compañero', icon: 'account-group' },
-    { key: 'maestro', label: 'Maestro', icon: 'crown' },
+  const gradosOptions = [
+    { value: null, label: 'Todos los grados', icon: 'account-group' },
+    { value: 'aprendiz', label: 'Aprendiz', icon: 'school', color: colors.info },
+    { value: 'companero', label: 'Compañero', icon: 'hammer-wrench', color: colors.warning },
+    { value: 'maestro', label: 'Maestro', icon: 'crown', color: colors.success },
   ];
 
-  const estadoOptions = [
-    { key: 'todos', label: 'Todos los Estados', icon: 'circle-outline' },
-    { key: 'activo', label: 'Activo', icon: 'check-circle', color: colors.success },
-    { key: 'inactivo', label: 'Inactivo', icon: 'minus-circle', color: colors.textSecondary },
-    { key: 'suspendido', label: 'Suspendido', icon: 'pause-circle', color: colors.warning },
-    { key: 'irradiado', label: 'Irradiado', icon: 'close-circle', color: colors.error },
+  const estadosOptions = [
+    { value: null, label: 'Todos los estados', icon: 'account-multiple' },
+    { value: 'activo', label: 'Activo', icon: 'check-circle', color: colors.success },
+    { value: 'inactivo', label: 'Inactivo', icon: 'pause-circle', color: colors.warning },
+    { value: 'suspendido', label: 'Suspendido', icon: 'cancel', color: colors.error },
   ];
 
-  const sortByOptions = [
-    { key: 'apellidos', label: 'Apellidos', icon: 'sort-alphabetical-ascending' },
-    { key: 'nombres', label: 'Nombres', icon: 'sort-alphabetical-ascending' },
-    { key: 'grado', label: 'Grado', icon: 'sort-variant' },
-    { key: 'fechaIngreso', label: 'Fecha de Ingreso', icon: 'sort-calendar-ascending' },
-    { key: 'created_at', label: 'Fecha de Registro', icon: 'sort-clock-ascending' },
+  const ordenarOptions = [
+    { value: 'nombre', label: 'Nombre', icon: 'sort-alphabetical-ascending' },
+    { value: 'apellido', label: 'Apellido', icon: 'sort-alphabetical-ascending' },
+    { value: 'fecha_ingreso', label: 'Fecha de ingreso', icon: 'calendar' },
+    { value: 'grado', label: 'Grado', icon: 'crown' },
   ];
 
-  const sortOrderOptions = [
-    { key: 'ASC', label: 'Ascendente', icon: 'sort-ascending' },
-    { key: 'DESC', label: 'Descendente', icon: 'sort-descending' },
+  const ordenOptions = [
+    { value: 'asc', label: 'Ascendente', icon: 'sort-ascending' },
+    { value: 'desc', label: 'Descendente', icon: 'sort-descending' },
   ];
 
-  // Actualizar filtros locales cuando cambien los externos
+  // Efecto para sincronizar filtros externos
   useEffect(() => {
-    setLocalFilters(filters);
-  }, [filters]);
+    setFilters(prevFilters => ({
+      ...prevFilters,
+      ...initialFilters,
+    }));
+  }, [initialFilters]);
 
-  // Animación de entrada/salida
+  // Efecto para animaciones del modal
   useEffect(() => {
     if (visible) {
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
     } else {
-      Animated.timing(slideAnim, {
-        toValue: hp(100),
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: screenHeight,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
-  }, [visible]);
+  }, [visible, slideAnim, backdropOpacity]);
 
-  const handleFilterChange = (key, value) => {
-    setLocalFilters(prev => ({
+  // Actualizar filtro
+  const updateFilter = (key, value) => {
+    setFilters(prev => ({
       ...prev,
-      [key]: value
+      [key]: value,
     }));
   };
 
+  // Aplicar filtros
   const handleApply = () => {
-    onApply?.(localFilters);
+    onApply?.(filters);
     onClose?.();
   };
 
-  const handleReset = () => {
-    const resetFilters = {
-      grado: 'todos',
-      estado: 'todos',
-      sortBy: 'apellidos',
-      sortOrder: 'ASC'
+  // Limpiar filtros
+  const handleClear = () => {
+    const clearedFilters = {
+      grado: null,
+      estado: null,
+      fechaIngreso: null,
+      ordenarPor: 'nombre',
+      orden: 'asc',
     };
-    setLocalFilters(resetFilters);
+    setFilters(clearedFilters);
+    onClear?.(clearedFilters);
   };
 
+  // Cerrar modal
+  const handleClose = () => {
+    onClose?.();
+  };
+
+  // Contar filtros activos
   const getActiveFiltersCount = () => {
     let count = 0;
-    if (localFilters.grado && localFilters.grado !== 'todos') count++;
-    if (localFilters.estado && localFilters.estado !== 'todos') count++;
+    if (filters.grado) count++;
+    if (filters.estado) count++;
+    if (filters.fechaIngreso) count++;
     return count;
   };
 
-  const renderFilterSection = (title, options, selectedKey, onSelect, iconColor) => (
-    <View style={styles.section}>
+  // Renderizar opción de filtro
+  const renderFilterOption = (option, isSelected, onPress, showColor = false) => (
+    <TouchableOpacity
+      key={option.value || 'all'}
+      style={[
+        styles.filterOption,
+        isSelected && styles.filterOptionSelected,
+        showColor && option.color && { borderLeftColor: option.color, borderLeftWidth: 3 }
+      ]}
+      onPress={() => onPress(option.value)}
+    >
+      <View style={styles.filterOptionContent}>
+        <Icon 
+          name={option.icon} 
+          size={wp(5)} 
+          color={isSelected ? colors.primary : (option.color || colors.textSecondary)} 
+        />
+        <Text style={[
+          styles.filterOptionText,
+          isSelected && styles.filterOptionTextSelected
+        ]}>
+          {option.label}
+        </Text>
+      </View>
+      {isSelected && (
+        <Icon name="check" size={wp(4)} color={colors.primary} />
+      )}
+    </TouchableOpacity>
+  );
+
+  // Renderizar sección de filtro
+  const renderFilterSection = (title, options, currentValue, onSelect, showColors = false) => (
+    <View style={styles.filterSection}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.optionsContainer}>
-        {options.map((option) => (
-          <TouchableOpacity
-            key={option.key}
-            style={[
-              styles.option,
-              selectedKey === option.key && styles.optionSelected
-            ]}
-            onPress={() => onSelect(option.key)}
-          >
-            <Icon
-              name={option.icon}
-              size={20}
-              color={option.color || (selectedKey === option.key ? colors.white : colors.textSecondary)}
-              style={styles.optionIcon}
-            />
-            <Text style={[
-              styles.optionText,
-              selectedKey === option.key && styles.optionTextSelected
-            ]}>
-              {option.label}
-            </Text>
-            {selectedKey === option.key && (
-              <Icon
-                name="check"
-                size={16}
-                color={colors.white}
-                style={styles.checkIcon}
-              />
-            )}
-          </TouchableOpacity>
-        ))}
+        {options.map(option => 
+          renderFilterOption(
+            option, 
+            currentValue === option.value, 
+            onSelect,
+            showColors
+          )
+        )}
       </View>
     </View>
   );
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}
-      animationType="fade"
       transparent
-      onRequestClose={onClose}
+      animationType="none"
+      onRequestClose={handleClose}
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          onPress={onClose}
+      {/* Backdrop */}
+      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+        <TouchableOpacity 
+          style={styles.backdropTouchable}
+          onPress={handleClose}
           activeOpacity={1}
         />
-        
-        <Animated.View style={[
-          styles.modal,
+      </Animated.View>
+
+      {/* Modal Content */}
+      <Animated.View 
+        style={[
+          styles.modalContainer,
           { transform: [{ translateY: slideAnim }] }
-        ]}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.title}>{title}</Text>
-              {getActiveFiltersCount() > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{getActiveFiltersCount()}</Text>
-                </View>
-              )}
-            </View>
-            
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Icon name="close" size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
+        ]}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>{title}</Text>
+            {getActiveFiltersCount() > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{getActiveFiltersCount()}</Text>
+              </View>
+            )}
           </View>
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+            <Icon name="close" size={wp(6)} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
 
-          {/* Content */}
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {/* Filtro por Grado */}
-            {renderFilterSection(
-              'Grado Masónico',
-              gradoOptions,
-              localFilters.grado,
-              (value) => handleFilterChange('grado', value)
-            )}
+        {/* Content */}
+        <ScrollView 
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Filtro por Grado */}
+          {renderFilterSection(
+            'Grado Masónico',
+            gradosOptions,
+            filters.grado,
+            (value) => updateFilter('grado', value),
+            true
+          )}
 
-            {/* Filtro por Estado */}
-            {renderFilterSection(
-              'Estado del Miembro',
-              estadoOptions,
-              localFilters.estado,
-              (value) => handleFilterChange('estado', value)
-            )}
+          {/* Filtro por Estado */}
+          {renderFilterSection(
+            'Estado del Miembro',
+            estadosOptions,
+            filters.estado,
+            (value) => updateFilter('estado', value),
+            true
+          )}
 
-            {/* Ordenamiento */}
-            {renderFilterSection(
-              'Ordenar por',
-              sortByOptions,
-              localFilters.sortBy,
-              (value) => handleFilterChange('sortBy', value)
-            )}
+          {/* Ordenar por */}
+          {renderFilterSection(
+            'Ordenar por',
+            ordenarOptions,
+            filters.ordenarPor,
+            (value) => updateFilter('ordenarPor', value)
+          )}
 
-            {/* Dirección del ordenamiento */}
-            {renderFilterSection(
-              'Dirección',
-              sortOrderOptions,
-              localFilters.sortOrder,
-              (value) => handleFilterChange('sortOrder', value)
-            )}
-          </ScrollView>
+          {/* Orden */}
+          {renderFilterSection(
+            'Orden',
+            ordenOptions,
+            filters.orden,
+            (value) => updateFilter('orden', value)
+          )}
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.resetButton}
-              onPress={handleReset}
-            >
-              <Icon name="refresh" size={18} color={colors.textSecondary} />
-              <Text style={styles.resetButtonText}>Limpiar</Text>
-            </TouchableOpacity>
+          {/* Espacio adicional para scroll */}
+          <View style={styles.bottomSpace} />
+        </ScrollView>
 
-            <TouchableOpacity
-              style={styles.applyButton}
-              onPress={handleApply}
-            >
-              <Icon name="check" size={18} color={colors.white} />
-              <Text style={styles.applyButtonText}>Aplicar Filtros</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </View>
+        {/* Footer con acciones */}
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={[styles.button, styles.clearButton]}
+            onPress={handleClear}
+          >
+            <Icon name="refresh" size={wp(4)} color={colors.textSecondary} />
+            <Text style={styles.clearButtonText}>Limpiar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.button, styles.applyButton]}
+            onPress={handleApply}
+          >
+            <Icon name="check" size={wp(4)} color={colors.white} />
+            <Text style={styles.applyButtonText}>
+              Aplicar {getActiveFiltersCount() > 0 && `(${getActiveFiltersCount()})`}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  
   backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colorOpacity.black50,
+  },
+
+  backdropTouchable: {
+    flex: 1,
+  },
+
+  modalContainer: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-  },
-  
-  modal: {
+    maxHeight: screenHeight * 0.85,
     backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: hp(80),
-    minHeight: hp(50),
+    borderTopLeftRadius: wp(5),
+    borderTopRightRadius: wp(5),
+    elevation: 10,
+    shadowColor: colors.shadow,
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
   },
-  
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.lg,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  
+
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  
+
   title: {
     fontSize: fontSize.xl,
     fontWeight: 'bold',
-    color: colors.text,
-    marginRight: spacing.sm,
+    color: colors.textPrimary,
   },
-  
+
   badge: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: wp(3),
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xs,
+    marginLeft: spacing.sm,
+    minWidth: wp(6),
+    alignItems: 'center',
   },
-  
+
   badgeText: {
-    fontSize: fontSize.xs,
     color: colors.white,
+    fontSize: fontSize.xs,
     fontWeight: 'bold',
   },
-  
+
   closeButton: {
-    padding: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: wp(2),
   },
-  
+
   content: {
     flex: 1,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
-  
-  section: {
-    marginBottom: spacing.xl,
+
+  filterSection: {
+    marginVertical: spacing.md,
   },
-  
+
   sectionTitle: {
     fontSize: fontSize.lg,
     fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.md,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
-  
+
   optionsContainer: {
     gap: spacing.xs,
   },
-  
-  option: {
+
+  filterOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 12,
+    justifyContent: 'space-between',
     backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: wp(2),
     borderWidth: 1,
     borderColor: colors.border,
   },
-  
-  optionSelected: {
-    backgroundColor: colors.primary,
+
+  filterOptionSelected: {
+    backgroundColor: colorOpacity.primary10,
     borderColor: colors.primary,
   },
-  
-  optionIcon: {
-    marginRight: spacing.sm,
-  },
-  
-  optionText: {
+
+  filterOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+  },
+
+  filterOptionText: {
     fontSize: fontSize.md,
-    color: colors.text,
-  },
-  
-  optionTextSelected: {
-    color: colors.white,
-    fontWeight: '600',
-  },
-  
-  checkIcon: {
+    color: colors.textPrimary,
     marginLeft: spacing.sm,
+    flex: 1,
   },
-  
+
+  filterOptionTextSelected: {
+    color: colors.primary,
+    fontWeight: '500',
+  },
+
+  bottomSpace: {
+    height: spacing.xl,
+  },
+
   footer: {
     flexDirection: 'row',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.md,
   },
-  
-  resetButton: {
+
+  button: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.md,
-    borderRadius: 12,
+    paddingVertical: spacing.md,
+    borderRadius: wp(2),
+    gap: spacing.sm,
+  },
+
+  clearButton: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  
-  resetButtonText: {
-    marginLeft: spacing.xs,
+
+  clearButtonText: {
     fontSize: fontSize.md,
     color: colors.textSecondary,
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  
+
   applyButton: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    borderRadius: 12,
     backgroundColor: colors.primary,
+    elevation: 2,
+    shadowColor: colors.primary,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
-  
+
   applyButtonText: {
-    marginLeft: spacing.xs,
     fontSize: fontSize.md,
     color: colors.white,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });
 

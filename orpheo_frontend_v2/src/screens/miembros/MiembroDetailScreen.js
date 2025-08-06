@@ -2,73 +2,95 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
+  StyleSheet,
   Alert,
-  ActivityIndicator,
-  RefreshControl,
   Linking,
-  Share,
-  Platform, // ✅ IMPORT AGREGADO
+  SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
-// Redux
-import {
-  fetchMiembroById,
-  deleteMiembro,
-  clearSelectedMiembro,
-  selectMiembroSeleccionado,
-  selectLoadingDetail,
-  selectError,
-} from '../../store/slices/miembrosSlice';
+// Hooks y servicios
+import { useMiembros } from '../../hooks/useMiembros';
 
-// Components
-import TabSafeView from '../../components/common/TabSafeView';
+// Componentes
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 
-// Styles
+// Estilos
 import { colors } from '../../styles/colors';
-import { globalStyles, spacing, fontSize } from '../../styles/globalStyles';
+import { wp, hp, fontSize, spacing } from '../../utils/dimensions';
 
 const MiembroDetailScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const dispatch = useDispatch();
-  
   const { miembroId } = route.params;
-  const miembro = useSelector(selectMiembroSeleccionado);
-  const loading = useSelector(selectLoadingDetail);
-  const error = useSelector(selectError);
 
+  // Hook personalizado de miembros
+  const {
+    miembroActual,
+    loading,
+    error,
+    getMiembro,
+    deleteMiembroWithConfirmation,
+    clearErrors,
+  } = useMiembros();
+
+  // Estados locales
   const [refreshing, setRefreshing] = useState(false);
 
-  // Cargar datos al enfocar la pantalla
+  // Cargar miembro al montar o enfocar
   useFocusEffect(
     React.useCallback(() => {
       if (miembroId) {
-        console.log(`🔍 Cargando detalle del miembro ID: ${miembroId}`);
-        dispatch(fetchMiembroById(miembroId));
+        loadMiembroData();
       }
-      
-      return () => {
-        // Limpiar miembro seleccionado al salir
-        dispatch(clearSelectedMiembro());
-      };
-    }, [miembroId, dispatch])
+    }, [miembroId])
   );
 
-  // Pull to refresh
+  // Configurar header de navegación
+  useEffect(() => {
+    navigation.setOptions({
+      title: miembroActual ? `${miembroActual.nombres} ${miembroActual.apellidos}` : 'Detalle del Miembro',
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={handleEdit}
+            disabled={loading.detail}
+          >
+            <Icon name="pencil" size={wp(5)} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerButton, { marginLeft: spacing.sm }]}
+            onPress={handleDelete}
+            disabled={loading.detail || loading.delete}
+          >
+            <Icon name="delete" size={wp(5)} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, miembroActual, loading, handleEdit, handleDelete]);
+
+  // Cargar datos del miembro
+  const loadMiembroData = async () => {
+    try {
+      await getMiembro(miembroId);
+    } catch (error) {
+      console.error('Error cargando miembro:', error);
+      // El error ya se maneja en el hook
+    }
+  };
+
+  // Refrescar datos
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await dispatch(fetchMiembroById(miembroId)).unwrap();
-    } catch (error) {
-      console.error('Error al refrescar:', error);
+      await loadMiembroData();
     } finally {
       setRefreshing(false);
     }
@@ -76,400 +98,370 @@ const MiembroDetailScreen = () => {
 
   // Navegar a editar
   const handleEdit = () => {
-    navigation.navigate('MiembroForm', { miembroId });
+    if (miembroActual) {
+      navigation.navigate('MiembroForm', {
+        miembroId: miembroActual.id,
+        mode: 'edit',
+      });
+    }
   };
 
-  // Eliminar miembro con confirmación
+  // Eliminar miembro
   const handleDelete = () => {
-    if (!miembro) return;
-
-    Alert.alert(
-      'Confirmar Eliminación',
-      `¿Estás seguro de eliminar a ${miembro.nombres} ${miembro.apellidos}?\n\nEsta acción no se puede deshacer.`,
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await dispatch(deleteMiembro(miembroId)).unwrap();
-              navigation.goBack();
-            } catch (error) {
-              Alert.alert(
-                'Error',
-                'No se pudo eliminar el miembro. Verifica tu conexión e intenta nuevamente.'
-              );
-            }
-          },
-        },
-      ]
-    );
+    if (miembroActual) {
+      deleteMiembroWithConfirmation(miembroActual, () => {
+        navigation.goBack();
+      });
+    }
   };
 
-  // Llamar al miembro
-  const handleCall = () => {
-    if (miembro?.telefono) {
-      const phoneUrl = `tel:${miembro.telefono}`;
-      Linking.canOpenURL(phoneUrl)
-        .then(supported => {
-          if (supported) {
-            return Linking.openURL(phoneUrl);
-          } else {
-            Alert.alert('Error', 'No se puede realizar la llamada');
-          }
+  // Acciones de contacto
+  const handleCall = (telefono) => {
+    if (telefono) {
+      Linking.openURL(`tel:${telefono}`).catch(() => {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'No se puede realizar la llamada',
         });
+      });
     }
   };
 
-  // Enviar email
-  const handleEmail = () => {
-    if (miembro?.email) {
-      const emailUrl = `mailto:${miembro.email}`;
-      Linking.canOpenURL(emailUrl)
-        .then(supported => {
-          if (supported) {
-            return Linking.openURL(emailUrl);
-          } else {
-            Alert.alert('Error', 'No se puede abrir el cliente de email');
-          }
+  const handleEmail = (email) => {
+    if (email) {
+      Linking.openURL(`mailto:${email}`).catch(() => {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'No se puede abrir el cliente de email',
         });
+      });
     }
   };
 
-  // Compartir información del miembro
-  const handleShare = async () => {
-    if (!miembro) return;
-
-    try {
-      const shareContent = {
-        message: `Información de ${miembro.nombres} ${miembro.apellidos}\n` +
-                 `Grado: ${miembro.grado}\n` +
-                 `Email: ${miembro.email}\n` +
-                 `${miembro.telefono ? `Teléfono: ${miembro.telefono}` : ''}`,
-      };
-
-      await Share.share(shareContent);
-    } catch (error) {
-      console.error('Error al compartir:', error);
+  const handleWhatsApp = (telefono) => {
+    if (telefono) {
+      const cleanPhone = telefono.replace(/[^\d]/g, '');
+      Linking.openURL(`whatsapp://send?phone=${cleanPhone}`).catch(() => {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'WhatsApp no está instalado',
+        });
+      });
     }
   };
 
-  // Helpers para obtener colores y iconos
-  const getGradoColor = (grado) => {
-    const gradoColors = {
-      aprendiz: '#10B981',  // Verde
-      companero: '#F59E0B', // Amarillo/Dorado
-      maestro: '#8B5CF6',   // Púrpura
-    };
-    return gradoColors[grado] || '#6B7280';
-  };
-
-  const getGradoIcon = (grado) => {
-    const gradoIcons = {
-      aprendiz: 'hammer',
-      companero: 'cog',
-      maestro: 'crown',
-    };
-    return gradoIcons[grado] || 'account';
-  };
-
-  const getEstadoColor = (estado) => {
-    const estadoColors = {
-      activo: '#10B981',
-      inactivo: '#F59E0B',
-      suspendido: '#EF4444',
-    };
-    return estadoColors[estado] || '#6B7280';
-  };
-
+  // Utilidades de formato
   const formatFecha = (fecha) => {
-    if (!fecha) return 'No registrada';
-    return new Date(fecha).toLocaleDateString('es-CL', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    if (!fecha) return 'No especificada';
+    try {
+      const date = new Date(fecha);
+      return date.toLocaleDateString('es-CL', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return 'Fecha inválida';
+    }
   };
 
-  const calcularAnosEnLogia = (fechaIngreso) => {
-    if (!fechaIngreso) return 0;
-    const hoy = new Date();
-    const ingreso = new Date(fechaIngreso);
-    const diffTime = Math.abs(hoy - ingreso);
-    const diffYears = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 365));
-    return diffYears;
+  const calcularEdad = (fechaNacimiento) => {
+    if (!fechaNacimiento) return null;
+    try {
+      const hoy = new Date();
+      const nacimiento = new Date(fechaNacimiento);
+      let edad = hoy.getFullYear() - nacimiento.getFullYear();
+      const diferenciaMeses = hoy.getMonth() - nacimiento.getMonth();
+      
+      if (diferenciaMeses < 0 || (diferenciaMeses === 0 && hoy.getDate() < nacimiento.getDate())) {
+        edad--;
+      }
+      
+      return edad;
+    } catch {
+      return null;
+    }
   };
+
+  const calcularAnosMembresia = (fechaIngreso) => {
+    if (!fechaIngreso) return null;
+    try {
+      const hoy = new Date();
+      const ingreso = new Date(fechaIngreso);
+      const diferencia = hoy - ingreso;
+      const anos = diferencia / (1000 * 60 * 60 * 24 * 365.25);
+      return Math.floor(anos * 10) / 10; // Redondear a 1 decimal
+    } catch {
+      return null;
+    }
+  };
+
+  // Colores según grado
+  const getGradoInfo = (grado) => {
+    switch (grado?.toLowerCase()) {
+      case 'aprendiz':
+        return { color: colors.info, icon: 'school', label: 'Aprendiz Masón' };
+      case 'companero':
+      case 'compañero':
+        return { color: colors.warning, icon: 'hammer-wrench', label: 'Compañero Masón' };
+      case 'maestro':
+        return { color: colors.success, icon: 'crown', label: 'Maestro Masón' };
+      default:
+        return { color: colors.textSecondary, icon: 'account', label: 'Sin grado especificado' };
+    }
+  };
+
+  const getEstadoInfo = (estado) => {
+    switch (estado?.toLowerCase()) {
+      case 'activo':
+        return { color: colors.success, icon: 'check-circle', label: 'Miembro Activo' };
+      case 'inactivo':
+        return { color: colors.warning, icon: 'pause-circle', label: 'Miembro Inactivo' };
+      case 'suspendido':
+        return { color: colors.error, icon: 'cancel', label: 'Miembro Suspendido' };
+      default:
+        return { color: colors.textSecondary, icon: 'help-circle', label: 'Estado no especificado' };
+    }
+  };
+
+  // Renderizar campo de información
+  const renderInfoField = (icon, label, value, action = null, actionIcon = null) => (
+    <View style={styles.infoField}>
+      <View style={styles.infoFieldLeft}>
+        <Icon name={icon} size={wp(5)} color={colors.textSecondary} />
+        <View style={styles.infoFieldContent}>
+          <Text style={styles.infoFieldLabel}>{label}</Text>
+          <Text style={styles.infoFieldValue} selectable>
+            {value || 'No especificado'}
+          </Text>
+        </View>
+      </View>
+      {action && value && (
+        <TouchableOpacity style={styles.actionButton} onPress={action}>
+          <Icon name={actionIcon} size={wp(4)} color={colors.primary} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // Renderizar sección
+  const renderSection = (title, children) => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
 
   // Estados de carga y error
-  if (loading && !miembro) {
+  if (loading.detail) {
     return (
-      <TabSafeView style={styles.loadingContainer}>
-        <LoadingSpinner size="large" text="Cargando información del miembro..." />
-      </TabSafeView>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <LoadingSpinner size="large" />
+          <Text style={styles.loadingText}>Cargando información del miembro...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  if (error && !miembro) {
+  if (error && !miembroActual) {
     return (
-      <TabSafeView style={styles.errorContainer}>
-        <Icon name="account-alert" size={64} color={colors.error} />
-        <Text style={styles.errorTitle}>Error al cargar</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => dispatch(fetchMiembroById(miembroId))}>
-          <Icon name="refresh" size={20} color={colors.white} />
-          <Text style={styles.retryButtonText}>Reintentar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Volver</Text>
-        </TouchableOpacity>
-      </TabSafeView>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Icon name="alert-circle" size={wp(15)} color={colors.error} />
+          <Text style={styles.errorTitle}>Error al cargar</Text>
+          <Text style={styles.errorMessage}>
+            {error.message || 'No se pudo cargar la información del miembro'}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadMiembroData}>
+            <Icon name="refresh" size={wp(4)} color={colors.white} />
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  if (!miembro) {
+  if (!miembroActual) {
     return (
-      <TabSafeView style={styles.errorContainer}>
-        <Icon name="account-off" size={64} color={colors.textMuted} />
-        <Text style={styles.errorTitle}>Miembro no encontrado</Text>
-        <Text style={styles.errorText}>El miembro que buscas no existe o ha sido eliminado.</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Volver</Text>
-        </TouchableOpacity>
-      </TabSafeView>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Icon name="account-off" size={wp(15)} color={colors.textSecondary} />
+          <Text style={styles.errorTitle}>Miembro no encontrado</Text>
+          <Text style={styles.errorMessage}>
+            El miembro solicitado no existe o ha sido eliminado
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
+
+  const gradoInfo = getGradoInfo(miembroActual.grado);
+  const estadoInfo = getEstadoInfo(miembroActual.estado);
+  const edad = calcularEdad(miembroActual.fecha_nacimiento);
+  const anosMembresia = calcularAnosMembresia(miembroActual.fecha_ingreso);
 
   return (
-    <TabSafeView>
-      <ScrollView 
-        style={styles.container}
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={colors.primary}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Header Card */}
-        <View style={styles.headerCard}>
-          <View style={styles.avatarContainer}>
-            <Icon 
-              name={getGradoIcon(miembro.grado)} 
-              size={48} 
-              color={getGradoColor(miembro.grado)} 
-            />
+        {/* Header con avatar y información principal */}
+        <View style={styles.header}>
+          <View style={[styles.avatar, { backgroundColor: gradoInfo.color }]}>
+            <Text style={styles.avatarText}>
+              {miembroActual.nombres?.charAt(0)}
+              {miembroActual.apellidos?.charAt(0)}
+            </Text>
           </View>
           
           <View style={styles.headerInfo}>
             <Text style={styles.memberName}>
-              {miembro.nombres} {miembro.apellidos}
+              {miembroActual.nombres} {miembroActual.apellidos}
             </Text>
-            <Text style={styles.memberEmail}>{miembro.email}</Text>
             
-            <View style={styles.badges}>
-              <View style={[
-                styles.gradoBadge, 
-                { backgroundColor: getGradoColor(miembro.grado) }
-              ]}>
-                <Text style={styles.gradoBadgeText}>
-                  {miembro.grado?.charAt(0).toUpperCase() + miembro.grado?.slice(1)}
-                </Text>
-              </View>
-              
-              <View style={[
-                styles.estadoBadge,
-                { backgroundColor: getEstadoColor(miembro.estado) }
-              ]}>
-                <Text style={styles.estadoBadgeText}>
-                  {miembro.estado?.charAt(0).toUpperCase() + miembro.estado?.slice(1)}
-                </Text>
-              </View>
+            <View style={styles.gradoContainer}>
+              <Icon name={gradoInfo.icon} size={wp(4)} color={gradoInfo.color} />
+              <Text style={[styles.gradoText, { color: gradoInfo.color }]}>
+                {gradoInfo.label}
+              </Text>
+            </View>
+            
+            <View style={styles.estadoContainer}>
+              <Icon name={estadoInfo.icon} size={wp(4)} color={estadoInfo.color} />
+              <Text style={[styles.estadoText, { color: estadoInfo.color }]}>
+                {estadoInfo.label}
+              </Text>
             </View>
           </View>
+        </View>
 
-          {/* Botones de acción rápida */}
-          <View style={styles.quickActions}>
-            {miembro.telefono && (
-              <TouchableOpacity style={styles.quickActionButton} onPress={handleCall}>
-                <Icon name="phone" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.quickActionButton} onPress={handleEmail}>
-              <Icon name="email" size={20} color={colors.primary} />
+        {/* Acciones rápidas */}
+        <View style={styles.quickActions}>
+          {miembroActual.telefono && (
+            <TouchableOpacity 
+              style={styles.quickAction}
+              onPress={() => handleCall(miembroActual.telefono)}
+            >
+              <Icon name="phone" size={wp(5)} color={colors.white} />
+              <Text style={styles.quickActionText}>Llamar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionButton} onPress={handleShare}>
-              <Icon name="share" size={20} color={colors.primary} />
+          )}
+          
+          {miembroActual.email && (
+            <TouchableOpacity 
+              style={styles.quickAction}
+              onPress={() => handleEmail(miembroActual.email)}
+            >
+              <Icon name="email" size={wp(5)} color={colors.white} />
+              <Text style={styles.quickActionText}>Email</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Información Personal */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            <Icon name="account-details" size={20} color={colors.primary} /> Información Personal
-          </Text>
+          )}
           
-          <View style={styles.infoGrid}>
-            <View style={styles.infoRow}>
-              <Icon name="card-account-details" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>RUT</Text>
-                <Text style={styles.infoValue}>{miembro.rut}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Icon name="phone" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Teléfono</Text>
-                <Text style={styles.infoValue}>{miembro.telefono || 'No registrado'}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Icon name="calendar-account" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Fecha de Nacimiento</Text>
-                <Text style={styles.infoValue}>{formatFecha(miembro.fecha_nacimiento)}</Text>
-              </View>
-            </View>
-            
-            {miembro.direccion && (
-              <View style={styles.infoRow}>
-                <Icon name="map-marker" size={20} color={colors.textSecondary} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Dirección</Text>
-                  <Text style={styles.infoValue}>{miembro.direccion}</Text>
-                </View>
-              </View>
-            )}
-
-            {miembro.profesion && (
-              <View style={styles.infoRow}>
-                <Icon name="briefcase" size={20} color={colors.textSecondary} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Profesión</Text>
-                  <Text style={styles.infoValue}>{miembro.profesion}</Text>
-                </View>
-              </View>
-            )}
-          </View>
+          {miembroActual.telefono && (
+            <TouchableOpacity 
+              style={styles.quickAction}
+              onPress={() => handleWhatsApp(miembroActual.telefono)}
+            >
+              <Icon name="whatsapp" size={wp(5)} color={colors.white} />
+              <Text style={styles.quickActionText}>WhatsApp</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Información Masónica */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            <Icon name="compass" size={20} color={colors.primary} /> Información Masónica
+        {/* Información personal */}
+        {renderSection('Información Personal', (
+          <>
+            {renderInfoField('card-account-details', 'RUT', miembroActual.rut)}
+            {renderInfoField(
+              'email', 
+              'Correo electrónico', 
+              miembroActual.email,
+              () => handleEmail(miembroActual.email),
+              'open-in-new'
+            )}
+            {renderInfoField(
+              'phone', 
+              'Teléfono', 
+              miembroActual.telefono,
+              () => handleCall(miembroActual.telefono),
+              'phone'
+            )}
+            {renderInfoField('cake', 'Fecha de nacimiento', formatFecha(miembroActual.fecha_nacimiento))}
+            {edad && renderInfoField('calendar-today', 'Edad', `${edad} años`)}
+            {renderInfoField('map-marker', 'Ciudad de nacimiento', miembroActual.ciudad_nacimiento)}
+            {renderInfoField('home', 'Dirección', miembroActual.direccion)}
+            {renderInfoField('briefcase', 'Profesión', miembroActual.profesion)}
+          </>
+        ))}
+
+        {/* Información masónica */}
+        {renderSection('Información Masónica', (
+          <>
+            {renderInfoField('crown', 'Grado masónico', gradoInfo.label)}
+            {renderInfoField('calendar-plus', 'Fecha de ingreso', formatFecha(miembroActual.fecha_ingreso))}
+            {anosMembresia && renderInfoField('clock', 'Años de membresía', `${anosMembresia} años`)}
+            {renderInfoField('account-check', 'Estado', estadoInfo.label)}
+          </>
+        ))}
+
+        {/* Observaciones */}
+        {miembroActual.observaciones && renderSection('Observaciones', (
+          <View style={styles.observacionesContainer}>
+            <Text style={styles.observacionesText} selectable>
+              {miembroActual.observaciones}
+            </Text>
+          </View>
+        ))}
+
+        {/* Estadísticas */}
+        {miembroActual.stats && renderSection('Estadísticas', (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{miembroActual.stats.asistencias || 0}</Text>
+              <Text style={styles.statLabel}>Asistencias</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{miembroActual.stats.eventos || 0}</Text>
+              <Text style={styles.statLabel}>Eventos</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{miembroActual.stats.anos || anosMembresia || 0}</Text>
+              <Text style={styles.statLabel}>Años</Text>
+            </View>
+          </View>
+        ))}
+
+        {/* Información de metadatos */}
+        <View style={styles.metadata}>
+          <Text style={styles.metadataText}>
+            Última actualización: {formatFecha(miembroActual.updated_at)}
           </Text>
-          
-          <View style={styles.infoGrid}>
-            <View style={styles.infoRow}>
-              <Icon name={getGradoIcon(miembro.grado)} size={20} color={getGradoColor(miembro.grado)} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Grado</Text>
-                <Text style={[styles.infoValue, { color: getGradoColor(miembro.grado) }]}>
-                  {miembro.grado?.charAt(0).toUpperCase() + miembro.grado?.slice(1)}
-                </Text>
-              </View>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Icon name="calendar-check" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Fecha de Ingreso</Text>
-                <Text style={styles.infoValue}>{formatFecha(miembro.fecha_ingreso)}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Icon name="clock-outline" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Años en la Logia</Text>
-                <Text style={styles.infoValue}>
-                  {calcularAnosEnLogia(miembro.fecha_ingreso)} años
-                </Text>
-              </View>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Icon name="account-check" size={20} color={getEstadoColor(miembro.estado)} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Estado</Text>
-                <Text style={[styles.infoValue, { color: getEstadoColor(miembro.estado) }]}>
-                  {miembro.estado?.charAt(0).toUpperCase() + miembro.estado?.slice(1)}
-                </Text>
-              </View>
-            </View>
-
-            {miembro.cargo && (
-              <View style={styles.infoRow}>
-                <Icon name="star" size={20} color={colors.warning} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Cargo</Text>
-                  <Text style={styles.infoValue}>{miembro.cargo}</Text>
-                </View>
-              </View>
-            )}
-          </View>
+          {miembroActual.creado_por && (
+            <Text style={styles.metadataText}>
+              Creado por: Usuario ID {miembroActual.creado_por}
+            </Text>
+          )}
         </View>
-
-        {/* Metadatos */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            <Icon name="information" size={20} color={colors.primary} /> Información del Sistema
-          </Text>
-          
-          <View style={styles.infoGrid}>
-            <View style={styles.infoRow}>
-              <Icon name="calendar-plus" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Fecha de Registro</Text>
-                <Text style={styles.infoValue}>{formatFecha(miembro.created_at)}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Icon name="calendar-edit" size={20} color={colors.textSecondary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Última Actualización</Text>
-                <Text style={styles.infoValue}>{formatFecha(miembro.updated_at)}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Espaciado para botones flotantes */}
-        <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Botones de acción flotantes */}
-      <View style={styles.actionButtons}>
-        <TouchableOpacity 
-          style={styles.editButton} 
-          onPress={handleEdit}
-          activeOpacity={0.8}
-        >
-          <Icon name="pencil" size={20} color={colors.white} />
-          <Text style={styles.editButtonText}>Editar</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.deleteButton} 
-          onPress={handleDelete}
-          activeOpacity={0.8}
-        >
-          <Icon name="delete" size={20} color={colors.white} />
-          <Text style={styles.deleteButtonText}>Eliminar</Text>
-        </TouchableOpacity>
-      </View>
-    </TabSafeView>
+      {/* Toast */}
+      <Toast />
+    </SafeAreaView>
   );
 };
 
@@ -478,243 +470,282 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  
-  // Loading y Error
+
+  scrollView: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    paddingBottom: spacing.xl,
+  },
+
+  // Header con avatar
+  header: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+
+  avatar: {
+    width: wp(25),
+    height: wp(25),
+    borderRadius: wp(12.5),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    elevation: 3,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+
+  avatarText: {
+    color: colors.white,
+    fontSize: fontSize.xxl,
+    fontWeight: 'bold',
+  },
+
+  headerInfo: {
+    alignItems: 'center',
+  },
+
+  memberName: {
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+
+  gradoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+
+  gradoText: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    marginLeft: spacing.sm,
+  },
+
+  estadoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  estadoText: {
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+    marginLeft: spacing.sm,
+  },
+
+  // Acciones rápidas
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
+
+  quickAction: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: wp(6),
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+
+  quickActionText: {
+    color: colors.white,
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    marginLeft: spacing.sm,
+  },
+
+  // Secciones
+  section: {
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    borderRadius: wp(3),
+    overflow: 'hidden',
+    elevation: 1,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+
+  sectionTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+
+  // Campos de información
+  infoField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+
+  infoFieldLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  infoFieldContent: {
+    marginLeft: spacing.sm,
+    flex: 1,
+  },
+
+  infoFieldLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+
+  infoFieldValue: {
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+
+  actionButton: {
+    padding: spacing.sm,
+    borderRadius: wp(2),
+  },
+
+  // Observaciones
+  observacionesContainer: {
+    padding: spacing.md,
+  },
+
+  observacionesText: {
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
+    lineHeight: fontSize.md * 1.5,
+  },
+
+  // Estadísticas
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing.md,
+  },
+
+  statItem: {
+    alignItems: 'center',
+  },
+
+  statNumber: {
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: spacing.xs,
+  },
+
+  statLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+
+  // Metadatos
+  metadata: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+
+  metadataText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+
+  // Header actions
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  headerButton: {
+    padding: spacing.sm,
+    borderRadius: wp(2),
+  },
+
+  // Estados de carga y error
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    paddingHorizontal: spacing.xl,
   },
-  
+
+  loadingText: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.background,
+    paddingHorizontal: spacing.xl,
   },
-  
+
   errorTitle: {
     fontSize: fontSize.xl,
     fontWeight: 'bold',
-    color: colors.error,
+    color: colors.textPrimary,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
+    textAlign: 'center',
   },
-  
-  errorText: {
+
+  errorMessage: {
     fontSize: fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: fontSize.md * 1.4,
     marginBottom: spacing.xl,
   },
-  
+
   retryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.error,
+    backgroundColor: colors.primary,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 25,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
+    borderRadius: wp(2),
   },
-  
+
   retryButtonText: {
     color: colors.white,
     fontSize: fontSize.md,
     fontWeight: '600',
-  },
-  
-  backButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  
-  backButtonText: {
-    color: colors.primary,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-
-  // Header Card
-  headerCard: {
-    backgroundColor: colors.surface,
-    margin: spacing.md,
-    padding: spacing.lg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: colors.border,
-    marginRight: spacing.md,
-  },
-  
-  headerInfo: {
-    flex: 1,
-  },
-  
-  memberName: {
-    fontSize: fontSize.xl,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  
-  memberEmail: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  
-  badges: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  
-  gradoBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  
-  gradoBadgeText: {
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  
-  estadoBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  
-  estadoBadgeText: {
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  
-  quickActions: {
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  
-  quickActionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-
-  // Sections
-  section: {
-    backgroundColor: colors.surface,
-    margin: spacing.md,
-    marginTop: 0,
-    padding: spacing.lg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  
-  infoGrid: {
-    gap: spacing.md,
-  },
-  
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: spacing.sm,
-  },
-  
-  infoContent: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  
-  infoLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  
-  infoValue: {
-    fontSize: fontSize.md,
-    color: colors.text,
-    fontWeight: '500',
-  },
-
-  // Action Buttons
-  actionButtons: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.md,
-  },
-  
-  editButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    borderRadius: 25,
-    gap: spacing.sm,
-  },
-  
-  editButtonText: {
-    color: colors.white,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  
-  deleteButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.error,
-    paddingVertical: spacing.md,
-    borderRadius: 25,
-    gap: spacing.sm,
-  },
-  
-  deleteButtonText: {
-    color: colors.white,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  
-  bottomSpacer: {
-    height: spacing.xl,
+    marginLeft: spacing.sm,
   },
 });
 
