@@ -1,579 +1,782 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
+  StyleSheet,
   Alert,
-  Share,
   Linking,
-  Dimensions,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Toast from 'react-native-toast-message';
+
+// Services
+import documentosService from '../../services/documentosService';
+
+// Components
+import TabSafeView from '../../components/common/TabSafeView';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 // Styles
 import { colors } from '../../styles/colors';
-import { globalStyles } from '../../styles/globalStyles';
+import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
 
-const { width: screenWidth } = Dimensions.get('window');
+const DocumentoDetailScreen = ({ route, navigation }) => {
+  const { documentoId } = route.params;
+  
+  // Estados
+  const [documento, setDocumento] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState(null);
 
-const DocumentoDetailScreen = () => {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { documento } = route.params;
-
-  const [activeTab, setActiveTab] = useState('info');
-
-  // Funciones de utilidad
-  const formatDate = (dateString) => {
-    if (!dateString) return 'No especificada';
-    return new Date(dateString).toLocaleDateString('es-CL', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatFileSize = (bytes) => {
-    if (!bytes) return 'Tamaño desconocido';
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-  };
-
-  // Obtener icono por tipo de documento
-  const getDocumentIcon = (tipo, fileName) => {
-    if (fileName) {
-      const extension = fileName.toLowerCase().split('.').pop();
-      switch (extension) {
-        case 'pdf':
-          return { name: 'file-pdf-box', color: colors.error };
-        case 'doc':
-        case 'docx':
-          return { name: 'file-word-box', color: colors.info };
-        case 'jpg':
-        case 'jpeg':
-        case 'png':
-          return { name: 'file-image-box', color: colors.success };
-        default:
-          return { name: 'file-document', color: colors.textMuted };
-      }
-    }
-    
-    switch (tipo) {
-      case 'plancha':
-        return { name: 'scroll-text', color: colors.primary };
-      case 'reglamento':
-        return { name: 'book-open', color: colors.warning };
-      case 'acta':
-        return { name: 'script-text', color: colors.info };
-      default:
-        return { name: 'file-document', color: colors.textMuted };
-    }
-  };
-
-  // Obtener color por categoría
-  const getCategoriaColor = (categoria) => {
-    switch (categoria?.toLowerCase()) {
-      case 'aprendiz':
-        return colors.aprendiz;
-      case 'companero':
-        return colors.companero;
-      case 'maestro':
-        return colors.maestro;
-      default:
-        return colors.info;
-    }
-  };
-
-  // Manejar descarga/apertura del documento
-  const handleOpenDocument = () => {
-    if (documento.archivo_url) {
-      Linking.openURL(documento.archivo_url).catch(() => {
-        Alert.alert('Error', 'No se pudo abrir el documento');
+  // Cargar documento
+  const cargarDocumento = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('📄 Cargando documento ID:', documentoId);
+      
+      const response = await documentosService.getDocumentoById(documentoId);
+      
+      console.log('✅ Documento cargado:', response);
+      
+      setDocumento(response);
+      
+      // Actualizar título de la pantalla
+      navigation.setOptions({
+        title: response.nombre?.length > 30 
+          ? response.nombre.substring(0, 30) + '...' 
+          : response.nombre || 'Documento'
       });
-    } else {
-      Alert.alert('Sin archivo', 'Este documento no tiene un archivo asociado');
+      
+    } catch (error) {
+      console.error('❌ Error cargando documento:', error);
+      setError(error.message || 'Error al cargar el documento');
+      
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'No se pudo cargar el documento',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Descargar documento
+  const descargarDocumento = async () => {
+    try {
+      setDownloading(true);
+      
+      Toast.show({
+        type: 'info',
+        text1: 'Descargando...',
+        text2: 'Preparando el archivo',
+      });
+
+      // Para desarrollo, usar el URL directo
+      const downloadUrl = documentosService.getDownloadUrl(documento.id);
+      
+      console.log('📥 Iniciando descarga:', downloadUrl);
+      
+      // Abrir en navegador (funciona en desarrollo)
+      await Linking.openURL(downloadUrl);
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Descarga iniciada',
+        text2: 'El archivo se abrirá en el navegador',
+      });
+      
+    } catch (error) {
+      console.error('❌ Error descargando documento:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'No se pudo descargar el documento',
+      });
+    } finally {
+      setDownloading(false);
     }
   };
 
   // Compartir documento
-  const handleShare = async () => {
+  const compartirDocumento = async () => {
     try {
-      await Share.share({
-        message: `${documento.titulo}\n\n${documento.descripcion || 'Documento de la logia'}`,
-        title: documento.titulo,
-        url: documento.archivo_url,
-      });
+      const shareUrl = documentosService.getDownloadUrl(documento.id);
+      
+      Alert.alert(
+        'Compartir Documento',
+        `Compartir: ${documento.nombre}`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { 
+            text: 'Copiar URL', 
+            onPress: () => {
+              // TODO: Implementar Clipboard
+              Toast.show({
+                type: 'success',
+                text1: 'URL copiada',
+                text2: 'URL copiada al portapapeles',
+              });
+            }
+          },
+        ]
+      );
     } catch (error) {
-      console.error('Error sharing:', error);
+      console.error('❌ Error compartiendo documento:', error);
     }
   };
 
+  // Editar documento
+  const editarDocumento = () => {
+    navigation.navigate('DocumentoForm', { 
+      documentoId: documento.id,
+      documento: documento 
+    });
+  };
+
   // Eliminar documento
-  const handleDelete = () => {
+  const eliminarDocumento = () => {
     Alert.alert(
       'Eliminar Documento',
-      `¿Estás seguro de que quieres eliminar "${documento.titulo}"?`,
+      `¿Estás seguro de que deseas eliminar "${documento.nombre}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         { 
           text: 'Eliminar', 
           style: 'destructive',
-          onPress: () => {
-            // TODO: Implementar eliminación
-            Alert.alert('Función pendiente', 'La eliminación será implementada próximamente');
+          onPress: async () => {
+            try {
+              await documentosService.deleteDocumento(documento.id);
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Documento eliminado',
+                text2: 'El documento ha sido eliminado correctamente',
+              });
+              
+              // Volver a la lista
+              navigation.goBack();
+              
+            } catch (error) {
+              console.error('❌ Error eliminando documento:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'No se pudo eliminar el documento',
+              });
+            }
           }
         },
       ]
     );
   };
 
-  // Componente de información
-  const InfoRow = ({ icon, label, value, color }) => (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIcon}>
-        <Icon name={icon} size={20} color={color || colors.primary} />
-      </View>
-      <View style={styles.infoContent}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue}>{value || 'No especificado'}</Text>
-      </View>
-    </View>
-  );
+  // Moderar documento (solo para administradores)
+  const moderarDocumento = (decision) => {
+    const mensaje = decision === 'aprobado' ? 'aprobar' : 'rechazar';
+    
+    Alert.prompt(
+      `${decision === 'aprobado' ? 'Aprobar' : 'Rechazar'} Documento`,
+      'Comentarios (opcional):',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: decision === 'aprobado' ? 'Aprobar' : 'Rechazar',
+          onPress: async (comentarios) => {
+            try {
+              await documentosService.moderarDocumento(documento.id, decision, comentarios || '');
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Documento moderado',
+                text2: `El documento ha sido ${decision}`,
+              });
+              
+              // Recargar documento
+              cargarDocumento();
+              
+            } catch (error) {
+              console.error('❌ Error moderando documento:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'No se pudo moderar el documento',
+              });
+            }
+          }
+        },
+      ],
+      'plain-text'
+    );
+  };
 
-  // Componente de tabs
-  const TabButton = ({ id, title, active, onPress }) => (
-    <TouchableOpacity
-      style={[styles.tabButton, active && styles.tabButtonActive]}
-      onPress={() => onPress(id)}
-    >
-      <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
-        {title}
-      </Text>
-    </TouchableOpacity>
-  );
+  // Utilidades
+  const getEstadoColor = (estado) => {
+    switch (estado) {
+      case 'aprobado': return colors.success;
+      case 'pendiente': return colors.warning;
+      case 'rechazado': return colors.error;
+      default: return colors.textSecondary;
+    }
+  };
 
-  const documentIcon = getDocumentIcon(documento.tipo, documento.archivo_nombre);
+  const getTipoIcon = (tipo) => {
+    switch (tipo) {
+      case 'ritual': return 'book-open-variant';
+      case 'reglamento': return 'gavel';
+      case 'plancha': return 'file-document';
+      case 'acta': return 'clipboard-text';
+      case 'instructivo': return 'help-circle';
+      default: return 'file';
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Configurar header buttons
+  useEffect(() => {
+    if (documento) {
+      navigation.setOptions({
+        headerRight: () => (
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={compartirDocumento}
+            >
+              <Icon name="share-variant" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={editarDocumento}
+            >
+              <Icon name="pencil" size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+        ),
+      });
+    }
+  }, [documento]);
+
+  // Cargar datos al montar
+  useEffect(() => {
+    cargarDocumento();
+  }, [documentoId]);
+
+  // Loading state
+  if (loading) {
+    return (
+      <TabSafeView style={styles.container}>
+        <LoadingSpinner />
+      </TabSafeView>
+    );
+  }
+
+  // Error state
+  if (error || !documento) {
+    return (
+      <TabSafeView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Icon name="alert-circle" size={80} color={colors.error} />
+          <Text style={styles.errorTitle}>Error al cargar</Text>
+          <Text style={styles.errorMessage}>
+            {error || 'No se pudo encontrar el documento'}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={cargarDocumento}>
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      </TabSafeView>
+    );
+  }
 
   return (
-    <SafeAreaView style={globalStyles.safeContainer}>
-      {/* Header del documento */}
-      <View style={styles.documentHeader}>
-        <View style={styles.iconContainer}>
-          <Icon 
-            name={documentIcon.name} 
-            size={60} 
-            color={documentIcon.color} 
-          />
-        </View>
-        
-        <View style={styles.documentInfo}>
-          <Text style={styles.documentTitle} numberOfLines={3}>
-            {documento.titulo}
-          </Text>
-          <Text style={styles.documentSubtitle}>
-            {documento.tipo?.toUpperCase()} • {documento.categoria?.toUpperCase()}
-          </Text>
+    <TabSafeView style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header del documento */}
+        <View style={styles.documentHeader}>
+          <View style={styles.documentIconContainer}>
+            <Icon 
+              name={getTipoIcon(documento.tipo)} 
+              size={40} 
+              color={colors.primary} 
+            />
+          </View>
           
-          <View style={styles.badges}>
-            <View style={[styles.badge, { backgroundColor: getCategoriaColor(documento.categoria) + '20' }]}>
-              <Text style={[styles.badgeText, { color: getCategoriaColor(documento.categoria) }]}>
-                {documento.categoria?.toUpperCase()}
-              </Text>
-            </View>
-            {documento.estado && (
-              <View style={[styles.badge, { backgroundColor: colors.success + '20' }]}>
-                <Text style={[styles.badgeText, { color: colors.success }]}>
-                  {documento.estado?.toUpperCase()}
+          <View style={styles.documentHeaderContent}>
+            <Text style={styles.documentTitle}>{documento.nombre}</Text>
+            
+            <View style={styles.documentMeta}>
+              <View style={styles.metaItem}>
+                <Icon name="account" size={16} color={colors.textSecondary} />
+                <Text style={styles.metaText}>
+                  {documento.autor?.nombres} {documento.autor?.apellidos}
                 </Text>
               </View>
-            )}
+              
+              <View style={styles.metaItem}>
+                <Icon name="calendar" size={16} color={colors.textSecondary} />
+                <Text style={styles.metaText}>
+                  {formatDate(documento.fecha_creacion)}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.statusContainer}>
+              <View style={[styles.statusBadge, { backgroundColor: getEstadoColor(documento.estado) }]}>
+                <Text style={styles.statusText}>
+                  {documento.estado?.charAt(0).toUpperCase() + documento.estado?.slice(1)}
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Acciones rápidas */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleOpenDocument}
-        >
-          <Icon name="eye" size={20} color={colors.primary} />
-          <Text style={[styles.actionText, { color: colors.primary }]}>Ver</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleShare}
-        >
-          <Icon name="share" size={20} color={colors.info} />
-          <Text style={[styles.actionText, { color: colors.info }]}>Compartir</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => Alert.alert('Próximamente', 'La edición estará disponible pronto')}
-        >
-          <Icon name="pencil" size={20} color={colors.warning} />
-          <Text style={[styles.actionText, { color: colors.warning }]}>Editar</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleDelete}
-        >
-          <Icon name="delete" size={20} color={colors.error} />
-          <Text style={[styles.actionText, { color: colors.error }]}>Eliminar</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <TabButton
-          id="info"
-          title="Información"
-          active={activeTab === 'info'}
-          onPress={setActiveTab}
-        />
-        <TabButton
-          id="content"
-          title="Contenido"
-          active={activeTab === 'content'}
-          onPress={setActiveTab}
-        />
-        <TabButton
-          id="history"
-          title="Historial"
-          active={activeTab === 'history'}
-          onPress={setActiveTab}
-        />
-      </View>
-
-      {/* Contenido de tabs */}
-      <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        {activeTab === 'info' && (
-          <View style={styles.tabContent}>
-            {/* Información básica */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Información Básica</Text>
-              <View style={globalStyles.card}>
-                <InfoRow
-                  icon="text"
-                  label="Título"
-                  value={documento.titulo}
-                />
-                <InfoRow
-                  icon="tag"
-                  label="Tipo"
-                  value={documento.tipo}
-                />
-                <InfoRow
-                  icon="folder"
-                  label="Categoría"
-                  value={documento.categoria}
-                />
-                <InfoRow
-                  icon="information"
-                  label="Estado"
-                  value={documento.estado}
-                />
-                {documento.descripcion && (
-                  <InfoRow
-                    icon="note-text"
-                    label="Descripción"
-                    value={documento.descripcion}
-                  />
-                )}
-              </View>
-            </View>
-
-            {/* Información del archivo */}
-            {documento.archivo_nombre && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Archivo</Text>
-                <View style={globalStyles.card}>
-                  <InfoRow
-                    icon="file"
-                    label="Nombre del archivo"
-                    value={documento.archivo_nombre}
-                  />
-                  <InfoRow
-                    icon="weight"
-                    label="Tamaño"
-                    value={formatFileSize(documento.archivo_size)}
-                  />
-                  <InfoRow
-                    icon="file-check"
-                    label="Tipo MIME"
-                    value={documento.archivo_tipo}
-                  />
-                </View>
-              </View>
+        {/* Botones de acción principales */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.downloadButton]}
+            onPress={descargarDocumento}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Icon name="download" size={20} color={colors.white} />
             )}
+            <Text style={styles.actionButtonText}>
+              {downloading ? 'Descargando...' : 'Descargar'}
+            </Text>
+          </TouchableOpacity>
 
-            {/* Metadatos */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Metadatos</Text>
-              <View style={globalStyles.card}>
-                <InfoRow
-                  icon="account"
-                  label="Autor"
-                  value={documento.autor}
-                />
-                <InfoRow
-                  icon="calendar-plus"
-                  label="Fecha de creación"
-                  value={formatDate(documento.created_at)}
-                />
-                <InfoRow
-                  icon="calendar-edit"
-                  label="Última modificación"
-                  value={formatDate(documento.updated_at)}
-                />
-                {documento.version && (
-                  <InfoRow
-                    icon="source-branch"
-                    label="Versión"
-                    value={documento.version}
-                  />
-                )}
-              </View>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.shareButton]}
+            onPress={compartirDocumento}
+          >
+            <Icon name="share-variant" size={20} color={colors.primary} />
+            <Text style={[styles.actionButtonText, { color: colors.primary }]}>
+              Compartir
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Información del archivo */}
+        <View style={styles.fileInfo}>
+          <Text style={styles.sectionTitle}>Información del Archivo</Text>
+          
+          <View style={styles.infoGrid}>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Tipo</Text>
+              <Text style={styles.infoValue}>
+                {documento.tipo?.charAt(0).toUpperCase() + documento.tipo?.slice(1)}
+              </Text>
+            </View>
+            
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Categoría</Text>
+              <Text style={styles.infoValue}>
+                {documento.categoria?.charAt(0).toUpperCase() + documento.categoria?.slice(1)}
+              </Text>
+            </View>
+            
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Tamaño</Text>
+              <Text style={styles.infoValue}>
+                {formatFileSize(documento.archivo_size || 0)}
+              </Text>
+            </View>
+            
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Formato</Text>
+              <Text style={styles.infoValue}>
+                {documento.archivo_nombre?.split('.').pop()?.toUpperCase() || 'N/A'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Descripción */}
+        {documento.descripcion && (
+          <View style={styles.description}>
+            <Text style={styles.sectionTitle}>Descripción</Text>
+            <Text style={styles.descriptionText}>{documento.descripcion}</Text>
+          </View>
+        )}
+
+        {/* Tags */}
+        {documento.tags && documento.tags.length > 0 && (
+          <View style={styles.tagsSection}>
+            <Text style={styles.sectionTitle}>Etiquetas</Text>
+            <View style={styles.tagsContainer}>
+              {documento.tags.map((tag, index) => (
+                <View key={index} style={styles.tag}>
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
             </View>
           </View>
         )}
 
-        {activeTab === 'content' && (
-          <View style={styles.tabContent}>
-            <View style={globalStyles.card}>
-              <Text style={styles.contentTitle}>Vista Previa del Contenido</Text>
-              {documento.contenido ? (
-                <Text style={styles.contentText}>{documento.contenido}</Text>
-              ) : (
-                <View style={styles.noContent}>
-                  <Icon name="file-outline" size={48} color={colors.textMuted} />
-                  <Text style={styles.noContentText}>
-                    No hay vista previa disponible para este documento
-                  </Text>
-                  <TouchableOpacity 
-                    style={globalStyles.button}
-                    onPress={handleOpenDocument}
-                  >
-                    <Text style={globalStyles.buttonText}>Abrir Documento</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {activeTab === 'history' && (
-          <View style={styles.tabContent}>
-            <View style={globalStyles.card}>
-              <Text style={styles.contentTitle}>Historial de Cambios</Text>
-              <View style={styles.historyItem}>
-                <Icon name="plus-circle" size={20} color={colors.success} />
-                <View style={styles.historyContent}>
-                  <Text style={styles.historyAction}>Documento creado</Text>
-                  <Text style={styles.historyDate}>{formatDate(documento.created_at)}</Text>
-                  <Text style={styles.historyUser}>por {documento.autor || 'Usuario'}</Text>
-                </View>
+        {/* Estadísticas */}
+        {documento.stats && (
+          <View style={styles.statsSection}>
+            <Text style={styles.sectionTitle}>Estadísticas</Text>
+            
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Icon name="download" size={24} color={colors.primary} />
+                <Text style={styles.statValue}>{documento.stats.descargas || 0}</Text>
+                <Text style={styles.statLabel}>Descargas</Text>
               </View>
               
-              {documento.updated_at && documento.updated_at !== documento.created_at && (
-                <View style={styles.historyItem}>
-                  <Icon name="pencil-circle" size={20} color={colors.warning} />
-                  <View style={styles.historyContent}>
-                    <Text style={styles.historyAction}>Documento modificado</Text>
-                    <Text style={styles.historyDate}>{formatDate(documento.updated_at)}</Text>
-                    <Text style={styles.historyUser}>por {documento.autor || 'Usuario'}</Text>
-                  </View>
-                </View>
-              )}
+              <View style={styles.statItem}>
+                <Icon name="eye" size={24} color={colors.primary} />
+                <Text style={styles.statValue}>{documento.stats.vistas || 0}</Text>
+                <Text style={styles.statLabel}>Vistas</Text>
+              </View>
+              
+              <View style={styles.statItem}>
+                <Icon name="heart" size={24} color={colors.primary} />
+                <Text style={styles.statValue}>{documento.stats.favoritos || 0}</Text>
+                <Text style={styles.statLabel}>Favoritos</Text>
+              </View>
             </View>
           </View>
         )}
 
-        {/* Espaciado final */}
-        <View style={{ height: 40 }} />
+        {/* Botones de moderación (solo para administradores) */}
+        {documento.estado === 'pendiente' && (
+          <View style={styles.moderationSection}>
+            <Text style={styles.sectionTitle}>Moderación</Text>
+            
+            <View style={styles.moderationButtons}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.approveButton]}
+                onPress={() => moderarDocumento('aprobado')}
+              >
+                <Icon name="check" size={20} color={colors.white} />
+                <Text style={styles.actionButtonText}>Aprobar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.rejectButton]}
+                onPress={() => moderarDocumento('rechazado')}
+              >
+                <Icon name="close" size={20} color={colors.white} />
+                <Text style={styles.actionButtonText}>Rechazar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Botón eliminar */}
+        <View style={styles.dangerZone}>
+          <TouchableOpacity 
+            style={styles.deleteButton}
+            onPress={eliminarDocumento}
+          >
+            <Icon name="delete" size={20} color={colors.error} />
+            <Text style={styles.deleteButtonText}>Eliminar Documento</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Espaciado inferior */}
+        <View style={styles.bottomSpacer} />
       </ScrollView>
-    </SafeAreaView>
+    </TabSafeView>
   );
 };
 
 const styles = StyleSheet.create({
-  documentHeader: {
-    backgroundColor: colors.surface,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  iconContainer: {
-    marginRight: 16,
-    alignItems: 'center',
-  },
-  documentInfo: {
-    flex: 1,
-  },
-  documentTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  documentSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  badges: {
-    flexDirection: 'row',
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  actionButton: {
-    alignItems: 'center',
-    padding: 8,
-  },
-  actionText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  tabButtonActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-  },
-  tabButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  tabButtonTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  contentContainer: {
+  container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  tabContent: {
-    padding: 16,
+  scrollView: {
+    flex: 1,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  infoRow: {
+  headerButtons: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
+    gap: spacing.sm,
+  },
+  headerButton: {
+    padding: spacing.xs,
+  },
+  
+  // Error state
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.error,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  errorMessage: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  retryButton: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  retryButtonText: {
+    color: colors.white,
+    fontWeight: '600',
+  },
+
+  // Document header
+  documentHeader: {
+    flexDirection: 'row',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  infoIcon: {
-    width: 40,
+  documentIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primaryLight,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 2,
+    marginRight: spacing.md,
   },
-  infoContent: {
+  documentHeaderContent: {
     flex: 1,
-    marginLeft: 12,
+  },
+  documentTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 24,
+    marginBottom: spacing.sm,
+  },
+  documentMeta: {
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  metaText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  statusContainer: {
+    alignItems: 'flex-start',
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: fontSize.xs,
+    color: colors.white,
+    fontWeight: '600',
+  },
+
+  // Action buttons
+  actionButtons: {
+    flexDirection: 'row',
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    gap: spacing.sm,
+  },
+  downloadButton: {
+    backgroundColor: colors.primary,
+  },
+  shareButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  actionButtonText: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.white,
+  },
+
+  // Sections
+  sectionTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+
+  // File info
+  fileInfo: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  infoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  infoItem: {
+    width: '48%',
   },
   infoLabel: {
-    fontSize: 12,
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginBottom: 2,
   },
   infoValue: {
-    fontSize: 16,
-    color: colors.text,
+    fontSize: fontSize.md,
     fontWeight: '500',
-  },
-  contentTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 16,
   },
-  contentText: {
-    fontSize: 14,
+
+  // Description
+  description: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  descriptionText: {
+    fontSize: fontSize.md,
     color: colors.text,
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  noContent: {
-    alignItems: 'center',
-    paddingVertical: 32,
+
+  // Tags
+  tagsSection: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
   },
-  noContentText: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginTop: 16,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  historyItem: {
+  tagsContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
-  historyContent: {
-    marginLeft: 12,
-    flex: 1,
+  tag: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 16,
   },
-  historyAction: {
-    fontSize: 14,
+  tagText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
     fontWeight: '500',
+  },
+
+  // Stats
+  statsSection: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  statValue: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
     color: colors.text,
   },
-  historyDate: {
-    fontSize: 12,
+  statLabel: {
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
-    marginTop: 2,
   },
-  historyUser: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
+
+  // Moderation
+  moderationSection: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  moderationButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  approveButton: {
+    backgroundColor: colors.success,
+  },
+  rejectButton: {
+    backgroundColor: colors.error,
+  },
+
+  // Danger zone
+  dangerZone: {
+    padding: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  deleteButtonText: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.error,
+  },
+
+  bottomSpacer: {
+    height: spacing.xl,
   },
 });
 

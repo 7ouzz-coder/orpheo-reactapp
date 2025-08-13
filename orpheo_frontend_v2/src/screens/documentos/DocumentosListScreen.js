@@ -7,657 +7,812 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
-  SafeAreaView,
-  TextInput,
-  Modal,
-  ActivityIndicator,
+  Linking,
 } from 'react-native';
-import { useSelector, useDispatch } from 'react-redux';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import * as DocumentPicker from 'expo-document-picker';
+import Toast from 'react-native-toast-message';
 
-// Redux
-import { 
-  fetchDocumentos, 
-  selectDocumentos, 
-  selectDocumentosLoading,
-  selectDocumentosError,
-  selectDocumentosFilters,
-  setFilters,
-  clearFilters,
-  uploadDocumento 
-} from '../../store/slices/documentosSlice';
+// Services
+import documentosService from '../../services/documentosService';
+
+// Components
+import TabSafeView from '../../components/common/TabSafeView';
+import SearchBar from '../../components/common/SearchBar';
+import FilterModal from '../../components/common/FilterModal';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 // Styles
 import { colors } from '../../styles/colors';
-import { globalStyles } from '../../styles/globalStyles';
+import { globalStyles, spacing, fontSize, wp, hp } from '../../styles/globalStyles';
 
-// Hook para debounce
-const useDebounce = (value, delay) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-};
-
-const DocumentosListScreen = () => {
-  const navigation = useNavigation();
-  const dispatch = useDispatch();
-  
-  // Redux state
-  const documentos = useSelector(selectDocumentos);
-  const loading = useSelector(selectDocumentosLoading);
-  const error = useSelector(selectDocumentosError);
-  const filters = useSelector(selectDocumentosFilters);
-  
-  // Local state
-  const [searchQuery, setSearchQuery] = useState(filters.search || '');
-  const [showFilters, setShowFilters] = useState(false);
+const DocumentosListScreen = ({ navigation }) => {
+  // Estados locales
+  const [documentos, setDocumentos] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [localFilters, setLocalFilters] = useState(filters);
-  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
   
-  // Debounced search
-  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  // Estados de filtros y búsqueda
+  const [filtros, setFiltros] = useState({
+    search: '',
+    categoria: '',
+    tipo: '',
+    estado: '',
+    autor: '',
+    fechaDesde: '',
+    fechaHasta: '',
+    ordenarPor: 'fecha_creacion',
+    orden: 'desc',
+  });
+  
+  // Paginación
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalDocumentos, setTotalDocumentos] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
-  // Cargar documentos al inicializar
-  useFocusEffect(
-    useCallback(() => {
-      loadDocumentos();
-    }, [])
-  );
-
-  useEffect(() => {
-    if (debouncedSearchQuery !== filters.search) {
-      dispatch(setFilters({ search: debouncedSearchQuery }));
-      loadDocumentos();
-    }
-  }, [debouncedSearchQuery]);
-
-  const loadDocumentos = async () => {
+  // Cargar documentos desde API
+  const cargarDocumentos = async (currentPage = 1, currentFilters = filtros, append = false) => {
     try {
-      await dispatch(fetchDocumentos()).unwrap();
-    } catch (error) {
-      console.error('Error loading documentos:', error);
-    }
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadDocumentos();
-    setRefreshing(false);
-  };
-
-  // Manejar toque en documento
-  const handleDocumentoPress = (documento) => {
-    navigation.navigate('DocumentoDetail', { documento });
-  };
-
-  // Subir documento
-  const handleUploadDocumento = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        
-        Alert.prompt(
-          'Título del Documento',
-          'Ingresa un título para el documento:',
-          [
-            {
-              text: 'Cancelar',
-              style: 'cancel',
-            },
-            {
-              text: 'Subir',
-              onPress: async (titulo) => {
-                if (titulo && titulo.trim()) {
-                  setUploading(true);
-                  try {
-                    await dispatch(uploadDocumento({
-                      titulo: titulo.trim(),
-                      tipo: 'documento',
-                      categoria: 'general',
-                      archivo: {
-                        uri: file.uri,
-                        type: file.mimeType,
-                        name: file.name,
-                        size: file.size,
-                      },
-                    })).unwrap();
-                    
-                    Alert.alert('Éxito', 'Documento subido correctamente');
-                  } catch (error) {
-                    Alert.alert('Error', 'No se pudo subir el documento');
-                  } finally {
-                    setUploading(false);
-                  }
-                } else {
-                  Alert.alert('Error', 'El título es obligatorio');
-                }
-              },
-            },
-          ],
-          'plain-text'
-        );
+      if (!append) {
+        setLoading(true);
       }
+      setError(null);
+      
+      console.log('📄 Cargando documentos:', { currentPage, currentFilters });
+      
+      const response = await documentosService.getDocumentos({
+        page: currentPage,
+        limit: 10,
+        ...currentFilters,
+      });
+      
+      console.log('✅ Documentos cargados:', response);
+      
+      if (append) {
+        setDocumentos(prev => [...prev, ...response.data]);
+      } else {
+        setDocumentos(response.data);
+      }
+      
+      setTotalPages(response.pagination.totalPages || 1);
+      setTotalDocumentos(response.total || response.data.length);
+      setHasMore(currentPage < (response.pagination.totalPages || 1));
+      
     } catch (error) {
-      console.error('Error picking document:', error);
-      Alert.alert('Error', 'No se pudo seleccionar el archivo');
+      console.error('❌ Error cargando documentos:', error);
+      setError(error.message || 'Error al cargar documentos');
+      
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'No se pudieron cargar los documentos',
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  // Cargar más documentos (paginación)
+  const cargarMasDocumentos = () => {
+    if (!loading && hasMore && page < totalPages) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      cargarDocumentos(nextPage, filtros, true);
+    }
+  };
+
+  // Manejar búsqueda
+  const handleSearch = (searchText) => {
+    const newFilters = { ...filtros, search: searchText };
+    setFiltros(newFilters);
+    setPage(1);
+    cargarDocumentos(1, newFilters);
   };
 
   // Aplicar filtros
-  const applyFilters = () => {
-    dispatch(setFilters(localFilters));
+  const aplicarFiltros = (newFilters) => {
+    const updatedFilters = { ...filtros, ...newFilters };
+    setFiltros(updatedFilters);
+    setPage(1);
     setShowFilters(false);
-    loadDocumentos();
+    cargarDocumentos(1, updatedFilters);
   };
 
   // Limpiar filtros
-  const clearAllFilters = () => {
-    const emptyFilters = {
+  const limpiarFiltros = () => {
+    const cleanFilters = {
       search: '',
-      categoria: null,
-      tipo: null,
-      estado: 'activo',
+      categoria: '',
+      tipo: '',
+      estado: '',
+      autor: '',
+      fechaDesde: '',
+      fechaHasta: '',
+      ordenarPor: 'fecha_creacion',
+      orden: 'desc',
     };
-    setLocalFilters(emptyFilters);
-    setSearchQuery('');
-    dispatch(clearFilters());
-    setShowFilters(false);
-    loadDocumentos();
+    setFiltros(cleanFilters);
+    setPage(1);
+    cargarDocumentos(1, cleanFilters);
   };
 
-  // Obtener icono por tipo de documento
-  const getDocumentIcon = (tipo, fileName) => {
-    if (fileName) {
-      const extension = fileName.toLowerCase().split('.').pop();
-      switch (extension) {
-        case 'pdf':
-          return 'file-pdf-box';
-        case 'doc':
-        case 'docx':
-          return 'file-word-box';
-        case 'jpg':
-        case 'jpeg':
-        case 'png':
-          return 'file-image-box';
-        default:
-          return 'file-document';
-      }
+  // Refrescar lista
+  const onRefresh = () => {
+    setRefreshing(true);
+    setPage(1);
+    cargarDocumentos(1, filtros);
+  };
+
+  // Descargar documento
+  const descargarDocumento = async (documento) => {
+    try {
+      Toast.show({
+        type: 'info',
+        text1: 'Descargando...',
+        text2: 'Preparando el archivo',
+      });
+
+      // Para desarrollo, usar el URL directo
+      const downloadUrl = documentosService.getDownloadUrl(documento.id);
+      
+      // Abrir en navegador (funciona en desarrollo)
+      await Linking.openURL(downloadUrl);
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Descarga iniciada',
+        text2: 'El archivo se abrirá en el navegador',
+      });
+      
+    } catch (error) {
+      console.error('❌ Error descargando documento:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'No se pudo descargar el documento',
+      });
     }
+  };
+
+  // Compartir documento
+  const compartirDocumento = async (documento) => {
+    try {
+      const shareUrl = documentosService.getDownloadUrl(documento.id);
+      
+      // TODO: Implementar Share API de React Native
+      Alert.alert(
+        'Compartir Documento',
+        `Compartir: ${documento.nombre}\nURL: ${shareUrl}`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { 
+            text: 'Copiar URL', 
+            onPress: () => {
+              // TODO: Copiar al portapapeles
+              Toast.show({
+                type: 'success',
+                text1: 'URL copiada',
+                text2: 'URL copiada al portapapeles',
+              });
+            }
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Error compartiendo documento:', error);
+    }
+  };
+
+  // Eliminar documento
+  const eliminarDocumento = (documento) => {
+    Alert.alert(
+      'Eliminar Documento',
+      `¿Estás seguro de que deseas eliminar "${documento.nombre}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Eliminar', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await documentosService.deleteDocumento(documento.id);
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Documento eliminado',
+                text2: 'El documento ha sido eliminado correctamente',
+              });
+              
+              // Recargar lista
+              onRefresh();
+              
+            } catch (error) {
+              console.error('❌ Error eliminando documento:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'No se pudo eliminar el documento',
+              });
+            }
+          }
+        },
+      ]
+    );
+  };
+
+  // Configuración de filtros para el modal
+  const filterConfig = [
+    {
+      key: 'categoria',
+      label: 'Categoría',
+      type: 'select',
+      options: [
+        { label: 'Todas', value: '' },
+        { label: 'Aprendiz', value: 'aprendiz' },
+        { label: 'Compañero', value: 'companero' },
+        { label: 'Maestro', value: 'maestro' },
+        { label: 'General', value: 'general' },
+        { label: 'Administrativo', value: 'administrativo' },
+      ],
+    },
+    {
+      key: 'tipo',
+      label: 'Tipo',
+      type: 'select',
+      options: [
+        { label: 'Todos', value: '' },
+        { label: 'Ritual', value: 'ritual' },
+        { label: 'Reglamento', value: 'reglamento' },
+        { label: 'Plancha', value: 'plancha' },
+        { label: 'Acta', value: 'acta' },
+        { label: 'Instructivo', value: 'instructivo' },
+      ],
+    },
+    {
+      key: 'estado',
+      label: 'Estado',
+      type: 'select',
+      options: [
+        { label: 'Todos', value: '' },
+        { label: 'Aprobado', value: 'aprobado' },
+        { label: 'Pendiente', value: 'pendiente' },
+        { label: 'Rechazado', value: 'rechazado' },
+      ],
+    },
+    {
+      key: 'ordenarPor',
+      label: 'Ordenar por',
+      type: 'select',
+      options: [
+        { label: 'Fecha creación', value: 'fecha_creacion' },
+        { label: 'Nombre', value: 'nombre' },
+        { label: 'Descargas', value: 'descargas' },
+        { label: 'Autor', value: 'autor' },
+      ],
+    },
+    {
+      key: 'orden',
+      label: 'Orden',
+      type: 'select',
+      options: [
+        { label: 'Descendente', value: 'desc' },
+        { label: 'Ascendente', value: 'asc' },
+      ],
+    },
+  ];
+
+  // Renderizar documento
+  const renderDocumento = ({ item: documento }) => (
+    <DocumentoCard
+      documento={documento}
+      onPress={() => navigation.navigate('DocumentoDetail', { documentoId: documento.id })}
+      onDownload={() => descargarDocumento(documento)}
+      onShare={() => compartirDocumento(documento)}
+      onEdit={() => navigation.navigate('DocumentoForm', { documentoId: documento.id })}
+      onDelete={() => eliminarDocumento(documento)}
+    />
+  );
+
+  // Renderizar estado vacío
+  const renderEmpty = () => (
+    <View style={styles.emptyContainer}>
+      <Icon name="file-document-outline" size={80} color={colors.textSecondary} />
+      <Text style={styles.emptyTitle}>No hay documentos</Text>
+      <Text style={styles.emptySubtitle}>
+        {filtros.search || filtros.categoria || filtros.tipo || filtros.estado
+          ? 'No se encontraron documentos con los filtros aplicados'
+          : 'Aún no hay documentos disponibles'}
+      </Text>
+      {(filtros.search || filtros.categoria || filtros.tipo || filtros.estado) && (
+        <TouchableOpacity style={styles.clearFiltersButton} onPress={limpiarFiltros}>
+          <Text style={styles.clearFiltersText}>Limpiar filtros</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // Renderizar footer de la lista
+  const renderFooter = () => {
+    if (!loading || refreshing) return null;
     
-    switch (tipo) {
-      case 'plancha':
-        return 'scroll-text';
-      case 'reglamento':
-        return 'book-open';
-      case 'acta':
-        return 'script-text';
-      default:
-        return 'file-document';
-    }
+    return (
+      <View style={styles.footerLoader}>
+        <LoadingSpinner size="small" />
+        <Text style={styles.footerText}>Cargando más documentos...</Text>
+      </View>
+    );
   };
 
-  // Obtener color por categoría
-  const getCategoriaColor = (categoria) => {
-    switch (categoria?.toLowerCase()) {
-      case 'aprendiz':
-        return colors.aprendiz;
-      case 'companero':
-        return colors.companero;
-      case 'maestro':
-        return colors.maestro;
-      default:
-        return colors.info;
-    }
-  };
+  // Hook para cargar datos al enfocar la pantalla
+  useFocusEffect(
+    useCallback(() => {
+      cargarDocumentos(1, filtros);
+    }, [])
+  );
 
-  // Componente de tarjeta de documento
-  const DocumentoCard = ({ documento }) => (
-    <TouchableOpacity
-      style={styles.documentoCard}
-      onPress={() => handleDocumentoPress(documento)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.iconContainer}>
-          <Icon 
-            name={getDocumentIcon(documento.tipo, documento.archivo_nombre)} 
-            size={32} 
-            color={getCategoriaColor(documento.categoria)} 
-          />
-        </View>
-        <View style={styles.documentoInfo}>
-          <Text style={styles.documentoTitle} numberOfLines={2}>
-            {documento.titulo}
-          </Text>
-          <Text style={styles.documentoSubtitle}>
-            {documento.tipo?.toUpperCase()} • {documento.categoria?.toUpperCase()}
-          </Text>
-          {documento.archivo_nombre && (
-            <Text style={styles.fileName} numberOfLines={1}>
-              📎 {documento.archivo_nombre}
+  return (
+    <TabSafeView style={styles.container}>
+      {/* Header con búsqueda y filtros */}
+      <View style={styles.header}>
+        <SearchBar
+          placeholder="Buscar documentos..."
+          value={filtros.search}
+          onChangeText={handleSearch}
+          onClear={() => handleSearch('')}
+        />
+        
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              (filtros.categoria || filtros.tipo || filtros.estado) && styles.filterButtonActive
+            ]}
+            onPress={() => setShowFilters(true)}
+          >
+            <Icon 
+              name="filter-variant" 
+              size={20} 
+              color={
+                (filtros.categoria || filtros.tipo || filtros.estado) 
+                  ? colors.white 
+                  : colors.primary
+              } 
+            />
+            <Text style={[
+              styles.filterButtonText,
+              (filtros.categoria || filtros.tipo || filtros.estado) && styles.filterButtonTextActive
+            ]}>
+              Filtros
             </Text>
-          )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => navigation.navigate('DocumentoUpload')}
+          >
+            <Icon name="plus" size={20} color={colors.white} />
+            <Text style={styles.addButtonText}>Subir</Text>
+          </TouchableOpacity>
         </View>
-        <Icon name="chevron-right" size={20} color={colors.textMuted} />
       </View>
 
+      {/* Contador de resultados */}
+      <View style={styles.resultsCounter}>
+        <Text style={styles.resultsText}>
+          {totalDocumentos} documento{totalDocumentos !== 1 ? 's' : ''} encontrado{totalDocumentos !== 1 ? 's' : ''}
+        </Text>
+      </View>
+
+      {/* Lista de documentos */}
+      {loading && !refreshing ? (
+        <LoadingSpinner />
+      ) : (
+        <FlatList
+          data={documentos}
+          renderItem={renderDocumento}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={documentos.length === 0 ? styles.emptyList : styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+          onEndReached={cargarMasDocumentos}
+          onEndReachedThreshold={0.1}
+          ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderFooter}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {/* Modal de filtros */}
+      <FilterModal
+        visible={showFilters}
+        onClose={() => setShowFilters(false)}
+        onApply={aplicarFiltros}
+        onClear={limpiarFiltros}
+        filters={filtros}
+        filterConfig={filterConfig}
+        title="Filtrar Documentos"
+      />
+    </TabSafeView>
+  );
+};
+
+// Componente DocumentoCard
+const DocumentoCard = ({ 
+  documento, 
+  onPress, 
+  onDownload, 
+  onShare, 
+  onEdit, 
+  onDelete 
+}) => {
+  const getEstadoColor = (estado) => {
+    switch (estado) {
+      case 'aprobado': return colors.success;
+      case 'pendiente': return colors.warning;
+      case 'rechazado': return colors.error;
+      default: return colors.textSecondary;
+    }
+  };
+
+  const getTipoIcon = (tipo) => {
+    switch (tipo) {
+      case 'ritual': return 'book-open-variant';
+      case 'reglamento': return 'gavel';
+      case 'plancha': return 'file-document';
+      case 'acta': return 'clipboard-text';
+      case 'instructivo': return 'help-circle';
+      default: return 'file';
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  return (
+    <TouchableOpacity style={styles.documentCard} onPress={onPress}>
+      {/* Header de la tarjeta */}
+      <View style={styles.cardHeader}>
+        <View style={styles.documentInfo}>
+          <Icon 
+            name={getTipoIcon(documento.tipo)} 
+            size={24} 
+            color={colors.primary} 
+          />
+          <View style={styles.documentTitleContainer}>
+            <Text style={styles.documentTitle} numberOfLines={2}>
+              {documento.nombre}
+            </Text>
+            <View style={styles.documentMeta}>
+              <Text style={styles.documentAuthor}>
+                {documento.autor?.nombres} {documento.autor?.apellidos}
+              </Text>
+              <Text style={styles.documentDate}>
+                {formatDate(documento.fecha_creacion)}
+              </Text>
+            </View>
+          </View>
+        </View>
+        
+        <View style={styles.cardActions}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onDownload();
+            }}
+          >
+            <Icon name="download" size={20} color={colors.primary} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onShare();
+            }}
+          >
+            <Icon name="share-variant" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Descripción */}
+      {documento.descripcion && (
+        <Text style={styles.documentDescription} numberOfLines={2}>
+          {documento.descripcion}
+        </Text>
+      )}
+
+      {/* Tags */}
+      {documento.tags && documento.tags.length > 0 && (
+        <View style={styles.tagsContainer}>
+          {documento.tags.slice(0, 3).map((tag, index) => (
+            <View key={index} style={styles.tag}>
+              <Text style={styles.tagText}>{tag}</Text>
+            </View>
+          ))}
+          {documento.tags.length > 3 && (
+            <Text style={styles.moreTags}>+{documento.tags.length - 3}</Text>
+          )}
+        </View>
+      )}
+
+      {/* Footer de la tarjeta */}
       <View style={styles.cardFooter}>
-        <View style={styles.cardMeta}>
-          <Text style={styles.metaText}>
-            {documento.autor || 'Sin autor'}
-          </Text>
-          <Text style={styles.metaText}>
-            {new Date(documento.created_at).toLocaleDateString()}
+        <View style={styles.documentStats}>
+          <View style={styles.stat}>
+            <Icon name="download" size={14} color={colors.textSecondary} />
+            <Text style={styles.statText}>{documento.stats?.descargas || 0}</Text>
+          </View>
+          
+          <View style={styles.stat}>
+            <Icon name="eye" size={14} color={colors.textSecondary} />
+            <Text style={styles.statText}>{documento.stats?.vistas || 0}</Text>
+          </View>
+          
+          <Text style={styles.fileSize}>
+            {formatFileSize(documento.archivo_size || 0)}
           </Text>
         </View>
         
-        <View style={styles.badges}>
-          <View style={[styles.badge, { backgroundColor: getCategoriaColor(documento.categoria) + '20' }]}>
-            <Text style={[styles.badgeText, { color: getCategoriaColor(documento.categoria) }]}>
-              {documento.categoria?.toUpperCase()}
+        <View style={styles.documentStatus}>
+          <View style={[styles.statusBadge, { backgroundColor: getEstadoColor(documento.estado) }]}>
+            <Text style={styles.statusText}>
+              {documento.estado?.charAt(0).toUpperCase() + documento.estado?.slice(1)}
             </Text>
           </View>
-          
-          {documento.estado && (
-            <View style={[styles.badge, { backgroundColor: colors.success + '20' }]}>
-              <Text style={[styles.badgeText, { color: colors.success }]}>
-                {documento.estado?.toUpperCase()}
-              </Text>
-            </View>
-          )}
         </View>
       </View>
     </TouchableOpacity>
   );
-
-  // Componente de filtros modal
-  const FiltersModal = () => (
-    <Modal
-      visible={showFilters}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => setShowFilters(false)}
-    >
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={() => setShowFilters(false)}>
-            <Icon name="close" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.modalTitle}>Filtros</Text>
-          <TouchableOpacity onPress={clearAllFilters}>
-            <Text style={styles.clearText}>Limpiar</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.modalContent}>
-          {/* Filtro por tipo */}
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Tipo de Documento</Text>
-            <View style={styles.filterOptions}>
-              {['documento', 'plancha', 'reglamento', 'acta'].map((tipo) => (
-                <TouchableOpacity
-                  key={tipo}
-                  style={[
-                    styles.filterOption,
-                    localFilters.tipo === tipo && styles.filterOptionActive
-                  ]}
-                  onPress={() => setLocalFilters(prev => ({ 
-                    ...prev, 
-                    tipo: prev.tipo === tipo ? null : tipo 
-                  }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    localFilters.tipo === tipo && styles.filterOptionTextActive
-                  ]}>
-                    {tipo.charAt(0).toUpperCase() + tipo.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Filtro por categoría */}
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Categoría</Text>
-            <View style={styles.filterOptions}>
-              {['general', 'aprendiz', 'companero', 'maestro'].map((categoria) => (
-                <TouchableOpacity
-                  key={categoria}
-                  style={[
-                    styles.filterOption,
-                    localFilters.categoria === categoria && styles.filterOptionActive
-                  ]}
-                  onPress={() => setLocalFilters(prev => ({ 
-                    ...prev, 
-                    categoria: prev.categoria === categoria ? null : categoria 
-                  }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    localFilters.categoria === categoria && styles.filterOptionTextActive
-                  ]}>
-                    {categoria.charAt(0).toUpperCase() + categoria.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.modalFooter}>
-          <TouchableOpacity
-            style={styles.applyButton}
-            onPress={applyFilters}
-          >
-            <Text style={styles.applyButtonText}>Aplicar Filtros</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    </Modal>
-  );
-
-  // Estado de carga inicial
-  if (loading && documentos.length === 0) {
-    return (
-      <View style={globalStyles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={globalStyles.loadingText}>Cargando documentos...</Text>
-      </View>
-    );
-  }
-
-  return (
-    <SafeAreaView style={globalStyles.safeContainer}>
-      {/* Header con búsqueda y filtros */}
-      <View style={styles.headerContainer}>
-        <View style={styles.searchContainer}>
-          <Icon name="magnify" size={20} color={colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar documentos..."
-            placeholderTextColor={colors.placeholder}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Icon name="close-circle" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.filterButton}
-          onPress={() => setShowFilters(true)}
-        >
-          <Icon name="filter" size={20} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Lista de documentos */}
-      <FlatList
-        data={documentos}
-        keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
-        renderItem={({ item }) => <DocumentoCard documento={item} />}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={() => (
-          <View style={globalStyles.emptyContainer}>
-            <Icon name="file-document" size={64} color={colors.textMuted} />
-            <Text style={globalStyles.emptyText}>
-              {searchQuery ? 'No se encontraron documentos' : 'No hay documentos disponibles'}
-            </Text>
-            {!searchQuery && (
-              <TouchableOpacity style={globalStyles.button} onPress={handleUploadDocumento}>
-                <Text style={globalStyles.buttonText}>Subir Primer Documento</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-        showsVerticalScrollIndicator={false}
-      />
-
-      {/* Botón flotante para subir */}
-      <TouchableOpacity
-        style={[styles.floatingButton, uploading && styles.floatingButtonDisabled]}
-        onPress={handleUploadDocumento}
-        disabled={uploading}
-        activeOpacity={0.8}
-      >
-        {uploading ? (
-          <ActivityIndicator size={24} color={colors.background} />
-        ) : (
-          <Icon name="plus" size={24} color={colors.background} />
-        )}
-      </TouchableOpacity>
-
-      {/* Modal de filtros */}
-      <FiltersModal />
-    </SafeAreaView>
-  );
 };
 
 const styles = StyleSheet.create({
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    padding: spacing.md,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  searchContainer: {
-    flex: 1,
+  headerButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginRight: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
-    color: colors.text,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
   filterButton: {
-    padding: 8,
-    backgroundColor: colors.primary + '20',
-    borderRadius: 8,
-  },
-  listContainer: {
-    padding: 16,
-  },
-  documentoCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  iconContainer: {
-    marginRight: 12,
-    marginTop: 4,
-  },
-  documentoInfo: {
     flex: 1,
-  },
-  documentoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  documentoSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  fileName: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-  },
-  cardFooter: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 12,
-  },
-  cardMeta: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  metaText: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  badges: {
-    flexDirection: 'row',
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  floatingButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
   },
-  floatingButtonDisabled: {
-    backgroundColor: colors.disabled,
+  filterButtonActive: {
+    backgroundColor: colors.primary,
   },
-  // Modal styles (similares a MiembrosListScreen)
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  clearText: {
-    fontSize: 16,
+  filterButtonText: {
+    marginLeft: spacing.xs,
     color: colors.primary,
     fontWeight: '600',
   },
-  modalContent: {
+  filterButtonTextActive: {
+    color: colors.white,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  addButtonText: {
+    marginLeft: spacing.xs,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  resultsCounter: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  resultsText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  list: {
+    padding: spacing.sm,
+  },
+  emptyList: {
+    flexGrow: 1,
+  },
+  emptyContainer: {
     flex: 1,
-    padding: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
   },
-  filterSection: {
-    marginBottom: 24,
-  },
-  filterTitle: {
-    fontSize: 16,
+  emptyTitle: {
+    fontSize: fontSize.lg,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 12,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  filterOptions: {
+  emptySubtitle: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  clearFiltersButton: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  clearFiltersText: {
+    color: colors.white,
+    fontWeight: '600',
+  },
+  footerLoader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+    gap: spacing.sm,
+  },
+  footerText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  
+  // DocumentoCard styles
+  documentCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...globalStyles.shadow,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  documentInfo: {
+    flexDirection: 'row',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  documentTitleContainer: {
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  documentTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 22,
+  },
+  documentMeta: {
+    flexDirection: 'row',
+    marginTop: spacing.xs,
+    gap: spacing.sm,
+  },
+  documentAuthor: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  documentDate: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  actionButton: {
+    padding: spacing.xs,
+  },
+  documentDescription: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
   },
-  filterOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    marginRight: 8,
-    marginBottom: 8,
+  tag: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 12,
   },
-  filterOptionActive: {
-    backgroundColor: colors.primary,
+  tagText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '500',
   },
-  filterOptionText: {
-    fontSize: 14,
-    color: colors.text,
+  moreTags: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    alignSelf: 'center',
   },
-  filterOptionTextActive: {
-    color: colors.background,
-    fontWeight: '600',
-  },
-  modalFooter: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  applyButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  applyButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
+  documentStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  stat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  statText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  fileSize: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  documentStatus: {
+    alignItems: 'flex-end',
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  statusText: {
+    fontSize: fontSize.xs,
+    color: colors.white,
+    fontWeight: '500',
   },
 });
 

@@ -1,0 +1,76 @@
+.
+├── .expo
+├── .gitignore
+├── actual_estructura_orpheo_frontend_v2.txt
+├── App.js
+├── app.json
+├── assets
+│   ├── adaptive-icon.png
+│   ├── favicon.png
+│   ├── icon.png
+│   ├── splash-icon.png
+├── estructura_actual_orpheo_frontend_v2.txt
+├── index.js
+├── node_modules
+├── package-lock.json
+├── package.json
+├── src
+│   ├── components
+│   │   ├── common
+│   │   │   ├── AppLoadingScreen.js
+│   │   │   ├── AppLoadinScreen.js
+│   │   │   ├── FilterModal.js
+│   │   │   ├── LoadingSpinner.js
+│   │   │   ├── SearchBar.js
+│   │   │   ├── TabSafeView.js
+│   │   ├── miembros
+│   │   │   ├── MiembroCard.js
+│   │   ├── navigation
+│   │   │   ├── AppNavigator.js
+│   ├── config
+│   │   ├── api.config.js
+│   │   ├── envinroment.js
+│   ├── debug
+│   │   ├── ExpoDebugPanel.js
+│   ├── hooks
+│   │   ├── useApi.js
+│   │   ├── useDebounce.js
+│   │   ├── useMiembros.js
+│   ├── screens
+│   │   ├── auth
+│   │   │   ├── LoginScreen.js
+│   │   ├── dashboard
+│   │   │   ├── DashboardScreen.js
+│   │   ├── DebugScreem.js
+│   │   ├── documentos
+│   │   │   ├── DocumentoDetailScreen.js
+│   │   │   ├── DocumentosListScreen.js
+│   │   ├── miembros
+│   │   │   ├── MiembroCard.js
+│   │   │   ├── MiembroDetailScreen.js
+│   │   │   ├── MiembroFormScreen.js
+│   │   │   ├── MiembrosListScreen.js
+│   │   ├── profile
+│   │   │   ├── ProfileScreen.js
+│   ├── services
+│   │   ├── api.js
+│   │   ├── apiClient.js
+│   │   ├── authService.js
+│   │   ├── miembrosService.js
+│   ├── store
+│   │   ├── slices
+│   │   │   ├── authSlice.js
+│   │   │   ├── documentosSlice.js
+│   │   │   ├── miembrosSlice.js
+│   │   │   ├── uiSlice.js
+│   │   ├── store.js
+│   ├── styles
+│   │   ├── colors.js
+│   │   ├── globalStyles.js
+│   ├── utils
+│   │   ├── apihelpers.js
+│   │   ├── constants.js
+│   │   ├── dimensions.js
+│   │   ├── helpers.js
+│   │   ├── storage.js
+│   │   ├── validators.js
