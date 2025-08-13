@@ -1,0 +1,61 @@
+.
+├── .env
+├── .gitignore
+├── .sequelizerc
+├── 0
+├── docker-compose.yml
+├── Dockerfile
+├── estructura_actual_orpheo-backend.txt
+├── logs
+├── node_modules
+├── package-lock.json
+├── package.json
+├── quick-start.sh
+├── src
+│   ├── config
+│   │   ├── config.js
+│   │   ├── database.js
+│   ├── controllers
+│   │   ├── authController.js
+│   │   ├── documentosController.js
+│   │   ├── miembrosController.js
+│   │   ├── notificacionesController.js
+│   │   ├── programasController.js
+│   ├── middleware
+│   │   ├── auth.js
+│   │   ├── errorHandler.js
+│   │   ├── permissions.js
+│   ├── migrations
+│   │   ├── 20250101000001-create-all-tables.js
+│   ├── models
+│   │   ├── Asistencia.js
+│   │   ├── Documento.js
+│   │   ├── index.js
+│   │   ├── Miembro.js
+│   │   ├── Notificacion.js
+│   │   ├── Programa.js
+│   │   ├── user.js
+│   ├── routes
+│   │   ├── auth.js
+│   │   ├── documentos.js
+│   │   ├── miembros.js
+│   │   ├── notificaciones.js
+│   │   ├── programas.js
+│   ├── scripts
+│   │   ├── database_init.sql
+│   │   ├── deploy-docker.sh
+│   │   ├── deploy-server.sh
+│   │   ├── deploy.sh
+│   │   ├── init-full.sh
+│   │   ├── scheduledTasks.js
+│   │   ├── start-docker.sh
+│   ├── seeders
+│   │   ├── 20250101000001-initial-data.js
+│   ├── server.js
+│   ├── services
+│   │   ├── notificationService.js
+│   ├── utils
+│   │   ├── logger.js
+│   │   ├── permissions.js
+├── temp
+├── uploads

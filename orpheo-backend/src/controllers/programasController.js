@@ -2,148 +2,264 @@ const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const { Programa, User, Miembro, Asistencia } = require('../models');
 const logger = require('../utils/logger');
-const { canViewGrado, hasPermission, canPerformCRUD } = require('../utils/permissions');
-const NotificationService = require('../services/notificationService');
+const moment = require('moment');
 
-const programasController = {
-  // Obtener todos los programas
+class ProgramasController {
+
+  // GET /api/programas - Obtener todos los programas con filtros y paginación
   async getProgramas(req, res) {
     try {
-      const { 
-        grado, 
-        tipo, 
-        estado, 
-        fecha_desde,
-        fecha_hasta,
-        search, 
-        page = 1, 
-        limit = 20, 
-        sortBy = 'fecha', 
-        sortOrder = 'ASC' 
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const {
+        page = 1,
+        limit = 10,
+        search = '',
+        grado = '',
+        tipo = '',
+        estado = '',
+        fecha_desde = '',
+        fecha_hasta = '',
+        sortBy = 'fecha',
+        sortOrder = 'DESC'
       } = req.query;
-      
-      const offset = (page - 1) * limit;
-      
-      // Construir condiciones de búsqueda
-      const where = { activo: true };
-      
-      // Filtro por grado con permisos
-      if (grado && grado !== 'todos') {
-        if (!canViewGrado(req.user.grado, grado)) {
-          return res.status(403).json({
-            success: false,
-            message: 'No tiene permisos para ver programas de este grado'
-          });
-        }
-        where.grado = grado;
-      } else {
-        // Aplicar filtros por permisos de grado
-        const allowedGrados = [];
-        if (canViewGrado(req.user.grado, 'aprendiz')) allowedGrados.push('aprendiz');
-        if (canViewGrado(req.user.grado, 'companero')) allowedGrados.push('companero');
-        if (canViewGrado(req.user.grado, 'maestro')) allowedGrados.push('maestro');
-        allowedGrados.push('general'); // Todos pueden ver programas generales
-        
-        where.grado = { [Op.in]: allowedGrados };
-      }
-      
-      // Filtros adicionales
-      if (tipo && tipo !== 'todos') {
-        where.tipo = tipo;
-      }
-      
-      if (estado && estado !== 'todos') {
-        where.estado = estado;
-      }
-      
-      // Filtro por rango de fechas
-      if (fecha_desde || fecha_hasta) {
-        where.fecha = {};
-        if (fecha_desde) where.fecha[Op.gte] = new Date(fecha_desde);
-        if (fecha_hasta) where.fecha[Op.lte] = new Date(fecha_hasta);
-      }
-      
-      // Búsqueda por texto
+
+      // Construir condiciones WHERE dinámicamente
+      const whereConditions = {};
+
+      // Filtro de búsqueda por tema o descripción
       if (search) {
-        where[Op.or] = [
+        whereConditions[Op.or] = [
           { tema: { [Op.iLike]: `%${search}%` } },
-          { encargado: { [Op.iLike]: `%${search}%` } },
-          { quien_imparte: { [Op.iLike]: `%${search}%` } },
-          { resumen: { [Op.iLike]: `%${search}%` } }
+          { descripcion: { [Op.iLike]: `%${search}%` } },
+          { orador: { [Op.iLike]: `%${search}%` } }
         ];
       }
-      
-      // Ejecutar consulta
-      const { count, rows } = await Programa.findAndCountAll({
-        where,
+
+      // Filtros específicos
+      if (grado && grado !== 'todos') whereConditions.grado = grado;
+      if (tipo && tipo !== 'todos') whereConditions.tipo = tipo;
+      if (estado && estado !== 'todos') whereConditions.estado = estado;
+
+      // Filtros de fecha
+      if (fecha_desde && fecha_hasta) {
+        whereConditions.fecha = {
+          [Op.between]: [new Date(fecha_desde), new Date(fecha_hasta)]
+        };
+      } else if (fecha_desde) {
+        whereConditions.fecha = { [Op.gte]: new Date(fecha_desde) };
+      } else if (fecha_hasta) {
+        whereConditions.fecha = { [Op.lte]: new Date(fecha_hasta) };
+      }
+
+      // Permisos por grado: usuarios solo ven programas de su grado o general
+      if (req.user.rol === 'general') {
+        const gradoJerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
+        const userLevel = gradoJerarquia[req.user.grado] || 1;
+        
+        const allowedGrades = Object.keys(gradoJerarquia)
+          .filter(g => gradoJerarquia[g] <= userLevel)
+          .concat(['general']);
+          
+        whereConditions.grado = { [Op.in]: allowedGrades };
+      }
+
+      // Calcular offset
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      // Realizar consulta con paginación
+      const { count, rows: programas } = await Programa.findAndCountAll({
+        where: whereConditions,
         include: [
           {
             model: User,
-            as: 'responsable',
-            attributes: ['id', 'username', 'member_full_name'],
-            required: false
+            as: 'creador',
+            attributes: ['id', 'nombres', 'apellidos']
+          },
+          {
+            model: Asistencia,
+            as: 'asistencias',
+            attributes: ['id', 'asistio', 'miembro_id'],
+            include: [
+              {
+                model: Miembro,
+                as: 'miembro',
+                attributes: ['nombres', 'apellidos', 'grado']
+              }
+            ]
           }
         ],
-        order: [[sortBy, sortOrder.toUpperCase()]],
         limit: parseInt(limit),
-        offset: parseInt(offset)
+        offset,
+        order: [[sortBy, sortOrder.toUpperCase()]],
+        distinct: true
       });
-      
-      // Formatear respuesta
-      const programas = rows.map(programa => ({
-        id: programa.id,
-        tema: programa.tema,
-        fecha: programa.fecha,
-        encargado: programa.encargado,
-        quienImparte: programa.quien_imparte,
-        resumen: programa.resumen,
-        grado: programa.grado,
-        tipo: programa.tipo,
-        estado: programa.estado,
-        ubicacion: programa.ubicacion,
-        requiereConfirmacion: programa.requiere_confirmacion,
-        limiteAsistentes: programa.limite_asistentes,
-        esFuturo: programa.esFuturo(),
-        diasRestantes: programa.getDiasRestantes(),
-        responsable: programa.responsable ? {
-          id: programa.responsable.id,
-          nombre: programa.responsable.member_full_name || programa.responsable.username
-        } : null,
-        createdAt: programa.created_at,
-        updatedAt: programa.updated_at
-      }));
-      
-      res.json({
+
+      // Calcular estadísticas de asistencia para cada programa
+      const programasConStats = programas.map(programa => {
+        const programaData = programa.toJSON();
+        const totalAsistencias = programaData.asistencias?.length || 0;
+        const asistieron = programaData.asistencias?.filter(a => a.asistio).length || 0;
+        
+        programaData.estadisticas = {
+          total_miembros: totalAsistencias,
+          asistieron,
+          porcentaje_asistencia: totalAsistencias > 0 ? ((asistieron / totalAsistencias) * 100).toFixed(1) : 0
+        };
+
+        return programaData;
+      });
+
+      const totalPages = Math.ceil(count / parseInt(limit));
+
+      res.status(200).json({
         success: true,
-        data: programas,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: count,
-          totalPages: Math.ceil(count / limit)
+        data: {
+          programas: programasConStats,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages,
+            totalItems: count,
+            itemsPerPage: parseInt(limit),
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+          },
+          filters: {
+            search,
+            grado,
+            tipo,
+            estado,
+            fecha_desde,
+            fecha_hasta,
+            sortBy,
+            sortOrder
+          }
         }
       });
-      
+
     } catch (error) {
-      logger.error('Error al obtener programas:', error);
+      logger.error('Error obteniendo programas:', error);
       res.status(500).json({
         success: false,
         message: 'Error interno del servidor'
       });
     }
-  },
+  }
 
-  // Obtener un programa por ID
+  // GET /api/programas/estadisticas - Obtener estadísticas de programas
+  async getEstadisticas(req, res) {
+    try {
+      // Total de programas
+      const totalProgramas = await Programa.count();
+
+      // Programas por estado
+      const programasPorEstado = await Programa.findAll({
+        attributes: [
+          'estado',
+          [Programa.sequelize.fn('COUNT', Programa.sequelize.col('id')), 'count']
+        ],
+        group: ['estado']
+      });
+
+      // Programas por tipo
+      const programasPorTipo = await Programa.findAll({
+        attributes: [
+          'tipo',
+          [Programa.sequelize.fn('COUNT', Programa.sequelize.col('id')), 'count']
+        ],
+        group: ['tipo']
+      });
+
+      // Programas por grado
+      const programasPorGrado = await Programa.findAll({
+        attributes: [
+          'grado',
+          [Programa.sequelize.fn('COUNT', Programa.sequelize.col('id')), 'count']
+        ],
+        group: ['grado']
+      });
+
+      // Estadísticas de asistencia general
+      const asistenciaStats = await Asistencia.findAll({
+        attributes: [
+          [Asistencia.sequelize.fn('COUNT', Asistencia.sequelize.col('id')), 'total'],
+          [Asistencia.sequelize.fn('SUM', Asistencia.sequelize.literal('CASE WHEN asistio = true THEN 1 ELSE 0 END')), 'asistieron']
+        ]
+      });
+
+      const totalAsistencias = parseInt(asistenciaStats[0]?.dataValues?.total || 0);
+      const totalAsistieron = parseInt(asistenciaStats[0]?.dataValues?.asistieron || 0);
+
+      // Próximos programas (5 más cercanos)
+      const proximosProgramas = await Programa.findAll({
+        where: {
+          fecha: { [Op.gte]: new Date() },
+          estado: 'programado'
+        },
+        include: [
+          {
+            model: User,
+            as: 'creador',
+            attributes: ['nombres', 'apellidos']
+          }
+        ],
+        order: [['fecha', 'ASC']],
+        limit: 5
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          resumen: {
+            total_programas: totalProgramas,
+            porcentaje_asistencia_general: totalAsistencias > 0 ? 
+              ((totalAsistieron / totalAsistencias) * 100).toFixed(1) : 0
+          },
+          distribucion: {
+            por_estado: programasPorEstado.map(p => ({
+              estado: p.estado,
+              cantidad: parseInt(p.dataValues.count)
+            })),
+            por_tipo: programasPorTipo.map(p => ({
+              tipo: p.tipo,
+              cantidad: parseInt(p.dataValues.count)
+            })),
+            por_grado: programasPorGrado.map(p => ({
+              grado: p.grado,
+              cantidad: parseInt(p.dataValues.count)
+            }))
+          },
+          proximos_programas: proximosProgramas
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error obteniendo estadísticas de programas:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // GET /api/programas/:id - Obtener un programa por ID
   async getProgramaById(req, res) {
     try {
       const { id } = req.params;
-      
+
       const programa = await Programa.findByPk(id, {
         include: [
           {
             model: User,
-            as: 'responsable',
-            attributes: ['id', 'username', 'member_full_name', 'email']
+            as: 'creador',
+            attributes: ['id', 'nombres', 'apellidos']
           },
           {
             model: Asistencia,
@@ -152,435 +268,495 @@ const programasController = {
               {
                 model: Miembro,
                 as: 'miembro',
-                attributes: ['id', 'nombres', 'apellidos', 'grado']
+                attributes: ['id', 'nombres', 'apellidos', 'grado', 'email']
               }
             ]
           }
         ]
       });
-      
-      if (!programa || !programa.activo) {
-        return res.status(404).json({
-          success: false,
-          message: 'Programa no encontrado'
-        });
-      }
-      
-      // Verificar permisos
-      if (!canViewGrado(req.user.grado, programa.grado)) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para ver este programa'
-        });
-      }
-      
-      // Obtener estadísticas de asistencia
-      const estadisticasAsistencia = await Asistencia.getEstadisticasByPrograma(programa.id);
-      
-      res.json({
-        success: true,
-        data: {
-          id: programa.id,
-          tema: programa.tema,
-          fecha: programa.fecha,
-          encargado: programa.encargado,
-          quienImparte: programa.quien_imparte,
-          resumen: programa.resumen,
-          grado: programa.grado,
-          tipo: programa.tipo,
-          estado: programa.estado,
-          ubicacion: programa.ubicacion,
-          detallesAdicionales: programa.detalles_adicionales,
-          requiereConfirmacion: programa.requiere_confirmacion,
-          limiteAsistentes: programa.limite_asistentes,
-          observaciones: programa.observaciones,
-          esFuturo: programa.esFuturo(),
-          diasRestantes: programa.getDiasRestantes(),
-          documentosRelacionados: programa.getDocumentosRelacionados(),
-          responsable: programa.responsable ? {
-            id: programa.responsable.id,
-            nombre: programa.responsable.member_full_name || programa.responsable.username,
-            email: programa.responsable.email
-          } : null,
-          asistencias: programa.asistencias?.map(asistencia => ({
-            id: asistencia.id,
-            asistio: asistencia.asistio,
-            confirmado: asistencia.confirmado,
-            justificacion: asistencia.justificacion,
-            horaLlegada: asistencia.hora_llegada,
-            miembro: {
-              id: asistencia.miembro.id,
-              nombre: `${asistencia.miembro.nombres} ${asistencia.miembro.apellidos}`,
-              grado: asistencia.miembro.grado
-            }
-          })) || [],
-          estadisticasAsistencia,
-          createdAt: programa.created_at,
-          updatedAt: programa.updated_at
-        }
-      });
-      
-    } catch (error) {
-      logger.error('Error al obtener programa:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
 
-  // Crear nuevo programa
-  async createPrograma(req, res) {
-    try {
-      // Verificar permisos
-      if (!hasPermission(req.user, 'create_programs')) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para crear programas'
-        });
-      }
-
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos de entrada inválidos',
-          errors: errors.array()
-        });
-      }
-
-      // Crear programa
-      const nuevoPrograma = await Programa.create({
-        tema: req.body.tema,
-        fecha: req.body.fecha,
-        encargado: req.body.encargado,
-        quien_imparte: req.body.quienImparte,
-        resumen: req.body.resumen,
-        grado: req.body.grado,
-        tipo: req.body.tipo,
-        estado: req.body.estado || 'programado',
-        ubicacion: req.body.ubicacion,
-        detalles_adicionales: req.body.detallesAdicionales,
-        requiere_confirmacion: req.body.requiereConfirmacion !== false,
-        limite_asistentes: req.body.limiteAsistentes,
-        observaciones: req.body.observaciones,
-        responsable_id: req.user.id,
-        responsable_nombre: req.user.member_full_name || req.user.username
-      });
-
-      logger.info(`Nuevo programa creado - ID: ${nuevoPrograma.id}, Tema: ${nuevoPrograma.tema}`);
-
-      // Emitir notificación en tiempo real
-      const io = req.app.get('io');
-      io.emit('new_program', {
-        type: 'new_program',
-        data: {
-          id: nuevoPrograma.id,
-          tema: nuevoPrograma.tema,
-          fecha: nuevoPrograma.fecha,
-          grado: nuevoPrograma.grado
-        }
-      });
-
-      // Enviar notificación automática
-      await NotificationService.notifyNewProgram(nuevoPrograma, req.user.id);
-
-      res.status(201).json({
-        success: true,
-        message: 'Programa creado exitosamente',
-        data: {
-          id: nuevoPrograma.id,
-          tema: nuevoPrograma.tema,
-          fecha: nuevoPrograma.fecha,
-          grado: nuevoPrograma.grado,
-          tipo: nuevoPrograma.tipo
-        }
-      });
-
-    } catch (error) {
-      logger.error('Error al crear programa:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Actualizar programa
-  async updatePrograma(req, res) {
-    try {
-      const { id } = req.params;
-      
-      const programa = await Programa.findByPk(id);
-      if (!programa || !programa.activo) {
+      if (!programa) {
         return res.status(404).json({
           success: false,
           message: 'Programa no encontrado'
         });
       }
 
-      // Verificar permisos
-      if (!canPerformCRUD(req.user, 'programas', 'update', programa)) {
+      // Verificar permisos de acceso según grado
+      if (!this.canAccessPrograma(req.user, programa)) {
         return res.status(403).json({
           success: false,
-          message: 'No tiene permisos para actualizar este programa'
+          message: 'No tienes permisos para ver este programa'
         });
       }
 
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos de entrada inválidos',
-          errors: errors.array()
-        });
-      }
-
-      // Actualizar programa
-      await programa.update({
-        tema: req.body.tema || programa.tema,
-        fecha: req.body.fecha || programa.fecha,
-        encargado: req.body.encargado || programa.encargado,
-        quien_imparte: req.body.quienImparte !== undefined ? req.body.quienImparte : programa.quien_imparte,
-        resumen: req.body.resumen !== undefined ? req.body.resumen : programa.resumen,
-        grado: req.body.grado || programa.grado,
-        tipo: req.body.tipo || programa.tipo,
-        estado: req.body.estado || programa.estado,
-        ubicacion: req.body.ubicacion !== undefined ? req.body.ubicacion : programa.ubicacion,
-        detalles_adicionales: req.body.detallesAdicionales !== undefined ? req.body.detallesAdicionales : programa.detalles_adicionales,
-        requiere_confirmacion: req.body.requiereConfirmacion !== undefined ? req.body.requiereConfirmacion : programa.requiere_confirmacion,
-        limite_asistentes: req.body.limiteAsistentes !== undefined ? req.body.limiteAsistentes : programa.limite_asistentes,
-        observaciones: req.body.observaciones !== undefined ? req.body.observaciones : programa.observaciones
-      });
-
-      logger.info(`Programa actualizado - ID: ${programa.id}`);
-
-      res.json({
+      res.status(200).json({
         success: true,
-        message: 'Programa actualizado exitosamente',
-        data: {
-          id: programa.id,
-          tema: programa.tema,
-          fecha: programa.fecha,
-          grado: programa.grado,
-          updatedAt: programa.updated_at
-        }
+        data: programa
       });
 
     } catch (error) {
-      logger.error('Error al actualizar programa:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Eliminar programa
-  async deletePrograma(req, res) {
-    try {
-      const { id } = req.params;
-      
-      const programa = await Programa.findByPk(id);
-      if (!programa || !programa.activo) {
-        return res.status(404).json({
-          success: false,
-          message: 'Programa no encontrado'
-        });
-      }
-
-      // Verificar permisos
-      if (!canPerformCRUD(req.user, 'programas', 'delete', programa)) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para eliminar este programa'
-        });
-      }
-
-      // Soft delete
-      await programa.update({ activo: false });
-
-      logger.info(`Programa eliminado (soft delete) - ID: ${programa.id}`);
-
-      res.json({
-        success: true,
-        message: 'Programa eliminado exitosamente'
-      });
-
-    } catch (error) {
-      logger.error('Error al eliminar programa:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Gestionar asistencia
-  async gestionarAsistencia(req, res) {
-    try {
-      const { programaId } = req.params;
-      const { miembroId, asistio, justificacion, horaLlegada } = req.body;
-
-      // Verificar permisos
-      if (!hasPermission(req.user, 'manage_attendance')) {
-        return res.status(403).json({
-          success: false,
-          message: 'No tiene permisos para gestionar asistencia'
-        });
-      }
-
-      const programa = await Programa.findByPk(programaId);
-      if (!programa || !programa.activo) {
-        return res.status(404).json({
-          success: false,
-          message: 'Programa no encontrado'
-        });
-      }
-
-      const miembro = await Miembro.findByPk(miembroId);
-      if (!miembro || !miembro.vigente) {
-        return res.status(404).json({
-          success: false,
-          message: 'Miembro no encontrado'
-        });
-      }
-
-      // Buscar o crear registro de asistencia
-      let asistencia = await Asistencia.findOne({
-        where: { programa_id: programaId, miembro_id: miembroId }
-      });
-
-      if (asistencia) {
-        // Actualizar asistencia existente
-        await asistencia.update({
-          asistio,
-          justificacion,
-          hora_llegada: horaLlegada,
-          registrado_por_id: req.user.id,
-          registrado_por_nombre: req.user.member_full_name || req.user.username
-        });
-      } else {
-        // Crear nueva asistencia
-        asistencia = await Asistencia.create({
-          programa_id: programaId,
-          miembro_id: miembroId,
-          asistio,
-          justificacion,
-          hora_llegada: horaLlegada,
-          registrado_por_id: req.user.id,
-          registrado_por_nombre: req.user.member_full_name || req.user.username,
-          nombre_miembro: miembro.getNombreCompleto(),
-          grado_miembro: miembro.grado
-        });
-      }
-
-      logger.info(`Asistencia gestionada - Programa: ${programaId}, Miembro: ${miembroId}, Asistio: ${asistio}`);
-
-      res.json({
-        success: true,
-        message: 'Asistencia registrada exitosamente',
-        data: {
-          id: asistencia.id,
-          asistio: asistencia.asistio,
-          justificacion: asistencia.justificacion,
-          horaLlegada: asistencia.hora_llegada
-        }
-      });
-
-    } catch (error) {
-      logger.error('Error al gestionar asistencia:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  },
-
-  // Obtener estadísticas de programas
-  async getEstadisticas(req, res) {
-    try {
-      const stats = {};
-
-      // Estadísticas generales
-      stats.total = await Programa.count({ where: { activo: true } });
-      stats.totalInactivos = await Programa.count({ where: { activo: false } });
-
-      // Por grado
-      const gradoCounts = await Programa.findAll({
-        attributes: [
-          'grado',
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-        ],
-        where: { activo: true },
-        group: ['grado'],
-        raw: true
-      });
-
-      stats.porGrado = {
-        aprendiz: 0,
-        companero: 0,
-        maestro: 0,
-        general: 0
-      };
-
-      gradoCounts.forEach(item => {
-        stats.porGrado[item.grado] = parseInt(item.count);
-      });
-
-      // Por tipo
-      const tipoCounts = await Programa.findAll({
-        attributes: [
-          'tipo',
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-        ],
-        where: { activo: true },
-        group: ['tipo'],
-        raw: true
-      });
-
-      stats.porTipo = {};
-      tipoCounts.forEach(item => {
-        stats.porTipo[item.tipo] = parseInt(item.count);
-      });
-
-      // Por estado
-      const estadoCounts = await Programa.findAll({
-        attributes: [
-          'estado',
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-        ],
-        where: { activo: true },
-        group: ['estado'],
-        raw: true
-      });
-
-      stats.porEstado = {};
-      estadoCounts.forEach(item => {
-        stats.porEstado[item.estado] = parseInt(item.count);
-      });
-
-      // Próximos programas
-      stats.proximos = await Programa.count({
-        where: {
-          fecha: { [Op.gt]: new Date() },
-          activo: true
-        }
-      });
-
-      res.json({
-        success: true,
-        data: stats
-      });
-
-    } catch (error) {
-      logger.error('Error al obtener estadísticas de programas:', error);
+      logger.error('Error obteniendo programa:', error);
       res.status(500).json({
         success: false,
         message: 'Error interno del servidor'
       });
     }
   }
-};
 
-module.exports = programasController;
+  // POST /api/programas - Crear nuevo programa
+  async createPrograma(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const {
+        tema,
+        descripcion,
+        fecha,
+        hora_inicio,
+        hora_fin,
+        tipo,
+        grado,
+        lugar,
+        orador,
+        estado = 'programado',
+        observaciones
+      } = req.body;
+
+      // Verificar que no haya conflicto de horarios
+      const conflicto = await Programa.findOne({
+        where: {
+          fecha: new Date(fecha),
+          [Op.or]: [
+            {
+              hora_inicio: { [Op.between]: [hora_inicio, hora_fin] }
+            },
+            {
+              hora_fin: { [Op.between]: [hora_inicio, hora_fin] }
+            },
+            {
+              [Op.and]: [
+                { hora_inicio: { [Op.lte]: hora_inicio } },
+                { hora_fin: { [Op.gte]: hora_fin } }
+              ]
+            }
+          ],
+          estado: { [Op.ne]: 'cancelado' }
+        }
+      });
+
+      if (conflicto) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ya existe un programa programado en ese horario'
+        });
+      }
+
+      // Crear programa
+      const nuevoPrograma = await Programa.create({
+        tema: tema.trim(),
+        descripcion: descripcion?.trim(),
+        fecha: new Date(fecha),
+        hora_inicio,
+        hora_fin,
+        tipo,
+        grado,
+        lugar: lugar?.trim(),
+        orador: orador?.trim(),
+        estado,
+        observaciones: observaciones?.trim(),
+        creado_por: req.user.id
+      });
+
+      // Crear asistencias automáticamente para todos los miembros elegibles
+      await this.crearAsistenciasAutomaticas(nuevoPrograma);
+
+      logger.audit('Programa creado', {
+        programaId: nuevoPrograma.id,
+        tema: nuevoPrograma.tema,
+        fecha: nuevoPrograma.fecha,
+        creadoPor: req.user.id,
+        ip: req.ip
+      });
+
+      // Emitir evento WebSocket
+      if (req.io) {
+        req.io.emit('nuevo_programa', {
+          id: nuevoPrograma.id,
+          tema: nuevoPrograma.tema,
+          fecha: nuevoPrograma.fecha,
+          tipo: nuevoPrograma.tipo,
+          grado: nuevoPrograma.grado
+        });
+      }
+
+      // Obtener programa completo para respuesta
+      const programaCompleto = await Programa.findByPk(nuevoPrograma.id, {
+        include: [
+          {
+            model: User,
+            as: 'creador',
+            attributes: ['nombres', 'apellidos']
+          }
+        ]
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Programa creado exitosamente',
+        data: programaCompleto
+      });
+
+    } catch (error) {
+      logger.error('Error creando programa:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // PUT /api/programas/:id - Actualizar programa
+  async updatePrograma(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const { id } = req.params;
+      const programa = await Programa.findByPk(id);
+
+      if (!programa) {
+        return res.status(404).json({
+          success: false,
+          message: 'Programa no encontrado'
+        });
+      }
+
+      // Verificar permisos
+      if (!this.canModifyPrograma(req.user, programa)) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permisos para modificar este programa'
+        });
+      }
+
+      const updateData = {};
+      const allowedFields = [
+        'tema', 'descripcion', 'fecha', 'hora_inicio', 'hora_fin',
+        'tipo', 'grado', 'lugar', 'orador', 'estado', 'observaciones'
+      ];
+
+      allowedFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+      });
+
+      // Si se cambió la fecha, verificar conflictos
+      if (updateData.fecha) {
+        const conflicto = await Programa.findOne({
+          where: {
+            id: { [Op.ne]: id },
+            fecha: new Date(updateData.fecha),
+            hora_inicio: updateData.hora_inicio || programa.hora_inicio,
+            hora_fin: updateData.hora_fin || programa.hora_fin,
+            estado: { [Op.ne]: 'cancelado' }
+          }
+        });
+
+        if (conflicto) {
+          return res.status(400).json({
+            success: false,
+            message: 'Ya existe un programa programado en ese horario'
+          });
+        }
+      }
+
+      await programa.update(updateData);
+
+      logger.audit('Programa actualizado', {
+        programaId: programa.id,
+        cambios: updateData,
+        actualizadoPor: req.user.id,
+        ip: req.ip
+      });
+
+      // Emitir evento WebSocket
+      if (req.io) {
+        req.io.emit('programa_actualizado', {
+          id: programa.id,
+          cambios: updateData
+        });
+      }
+
+      const programaActualizado = await Programa.findByPk(id, {
+        include: [
+          {
+            model: User,
+            as: 'creador',
+            attributes: ['nombres', 'apellidos']
+          }
+        ]
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Programa actualizado exitosamente',
+        data: programaActualizado
+      });
+
+    } catch (error) {
+      logger.error('Error actualizando programa:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // DELETE /api/programas/:id - Eliminar programa
+  async deletePrograma(req, res) {
+    try {
+      const { id } = req.params;
+      const programa = await Programa.findByPk(id);
+
+      if (!programa) {
+        return res.status(404).json({
+          success: false,
+          message: 'Programa no encontrado'
+        });
+      }
+
+      // Verificar permisos
+      if (!this.canDeletePrograma(req.user, programa)) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permisos para eliminar este programa'
+        });
+      }
+
+      // Eliminar asistencias relacionadas primero
+      await Asistencia.destroy({
+        where: { programa_id: id }
+      });
+
+      await programa.destroy();
+
+      logger.audit('Programa eliminado', {
+        programaId: id,
+        tema: programa.tema,
+        eliminadoPor: req.user.id,
+        ip: req.ip
+      });
+
+      // Emitir evento WebSocket
+      if (req.io) {
+        req.io.emit('programa_eliminado', {
+          id: programa.id,
+          tema: programa.tema
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Programa eliminado exitosamente'
+      });
+
+    } catch (error) {
+      logger.error('Error eliminando programa:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // POST /api/programas/:programaId/asistencia - Gestionar asistencia
+  async gestionarAsistencia(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const { programaId } = req.params;
+      const { miembroId, asistio, justificacion, horaLlegada } = req.body;
+
+      // Verificar que existe el programa
+      const programa = await Programa.findByPk(programaId);
+      if (!programa) {
+        return res.status(404).json({
+          success: false,
+          message: 'Programa no encontrado'
+        });
+      }
+
+      // Verificar que existe el miembro
+      const miembro = await Miembro.findByPk(miembroId);
+      if (!miembro) {
+        return res.status(404).json({
+          success: false,
+          message: 'Miembro no encontrado'
+        });
+      }
+
+      // Buscar o crear asistencia
+      let asistencia = await Asistencia.findOne({
+        where: {
+          programa_id: programaId,
+          miembro_id: miembroId
+        }
+      });
+
+      const asistenciaData = {
+        asistio,
+        justificacion: justificacion?.trim(),
+        hora_llegada: horaLlegada,
+        confirmado: true,
+        registrado_por: req.user.id
+      };
+
+      if (asistencia) {
+        await asistencia.update(asistenciaData);
+      } else {
+        asistencia = await Asistencia.create({
+          programa_id: programaId,
+          miembro_id: miembroId,
+          ...asistenciaData
+        });
+      }
+
+      logger.audit('Asistencia registrada', {
+        programaId,
+        miembroId,
+        asistio,
+        registradoPor: req.user.id,
+        ip: req.ip
+      });
+
+      // Emitir evento WebSocket
+      if (req.io) {
+        req.io.emit('asistencia_actualizada', {
+          programaId,
+          miembroId,
+          miembro: `${miembro.nombres} ${miembro.apellidos}`,
+          asistio,
+          timestamp: new Date()
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Asistencia registrada exitosamente',
+        data: asistencia
+      });
+
+    } catch (error) {
+      logger.error('Error gestionando asistencia:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // Métodos auxiliares
+
+  // Crear asistencias automáticamente para miembros elegibles
+  async crearAsistenciasAutomaticas(programa) {
+    try {
+      // Obtener miembros elegibles según el grado del programa
+      const whereCondition = { estado: 'activo' };
+      
+      if (programa.grado !== 'general') {
+        const gradoJerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
+        const programaLevel = gradoJerarquia[programa.grado];
+        
+        const allowedGrades = Object.keys(gradoJerarquia)
+          .filter(g => gradoJerarquia[g] >= programaLevel);
+          
+        whereCondition.grado = { [Op.in]: allowedGrades };
+      }
+
+      const miembrosElegibles = await Miembro.findAll({
+        where: whereCondition
+      });
+
+      // Crear asistencias
+      const asistencias = miembrosElegibles.map(miembro => ({
+        programa_id: programa.id,
+        miembro_id: miembro.id,
+        asistio: false,
+        confirmado: false
+      }));
+
+      await Asistencia.bulkCreate(asistencias, {
+        ignoreDuplicates: true
+      });
+
+      logger.info(`Asistencias creadas para programa ${programa.id}`, {
+        programaId: programa.id,
+        cantidadMiembros: miembrosElegibles.length
+      });
+
+    } catch (error) {
+      logger.error('Error creando asistencias automáticas:', error);
+    }
+  }
+
+  // Verificar permisos de acceso
+  canAccessPrograma(user, programa) {
+    // SuperAdmin y Admin pueden ver todo
+    if (['superadmin', 'admin'].includes(user.rol)) {
+      return true;
+    }
+
+    // Verificar acceso por grado
+    const gradoJerarquia = { aprendiz: 1, companero: 2, maestro: 3 };
+    const userLevel = gradoJerarquia[user.grado] || 1;
+    const programaLevel = gradoJerarquia[programa.grado] || 1;
+
+    // Si es general, todos pueden ver
+    if (programa.grado === 'general') {
+      return true;
+    }
+
+    // Puede ver si su grado es igual o superior
+    return userLevel >= programaLevel;
+  }
+
+  // Verificar permisos de modificación
+  canModifyPrograma(user, programa) {
+    // Solo Admin, SuperAdmin y el creador pueden modificar
+    if (['superadmin', 'admin'].includes(user.rol)) {
+      return true;
+    }
+
+    return programa.creado_por === user.id;
+  }
+
+  // Verificar permisos de eliminación
+  canDeletePrograma(user, programa) {
+    // Solo Admin y SuperAdmin pueden eliminar
+    return ['superadmin', 'admin'].includes(user.rol);
+  }
+}
+
+module.exports = new ProgramasController();

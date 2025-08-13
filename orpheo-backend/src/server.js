@@ -4,1106 +4,998 @@ const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const slowDown = require('express-slow-down');
 const { createServer } = require('http');
+const { createServer: createHttpsServer } = require('https');
 const { Server } = require('socket.io');
+const cluster = require('cluster');
 const os = require('os');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+const sharp = require('sharp'); // Para optimización de imágenes
+const winston = require('winston'); // Logging avanzado
+const expressWinston = require('express-winston');
 require('dotenv').config();
 
-// ====================================================
-// CONFIGURACIÓN DE IMPORTACIONES CON FALLBACKS
-// ====================================================
-let db, authRoutes, miembrosRoutes, documentosRoutes, programasRoutes, notificacionesRoutes;
-let errorHandler, logger;
+// Importar base de datos
+const db = require('./models');
 
-// Base de datos
-try {
-  db = require('./models');
-  console.log('✅ Modelos de BD importados correctamente');
-} catch (error) {
-  console.warn('⚠️  Modelos de BD no encontrados, continuando sin DB');
-  db = null;
-}
+// Importar rutas
+const authRoutes = require('./routes/auth');
+const miembrosRoutes = require('./routes/miembros');
+const documentosRoutes = require('./routes/documentos');
+const programasRoutes = require('./routes/programas');
+const notificacionesRoutes = require('./routes/notificaciones');
 
-// Rutas con fallbacks automáticos
-const routesFallback = (routeName) => {
-  const router = express.Router();
-  router.get('/', (req, res) => res.json({ 
-    success: false, 
-    message: `Ruta ${routeName} no implementada`,
-    timestamp: new Date().toISOString()
-  }));
-  return router;
-};
+// Importar middleware
+const errorHandler = require('./middleware/errorHandler');
+const authMiddleware = require('./middleware/auth');
+const uploadMiddleware = require('./middleware/upload');
 
-const importRoute = (routePath, routeName) => {
-  try {
-    const route = require(routePath);
-    console.log(`✅ Ruta ${routeName} importada correctamente`);
-    return route;
-  } catch (error) {
-    console.warn(`⚠️  Ruta ${routeName} no encontrada, usando fallback`);
-    return routesFallback(routeName);
-  }
-};
+// ==========================================
+// CONFIGURACIÓN AVANZADA DEL SERVIDOR
+// ==========================================
 
-// Importar todas las rutas
-authRoutes = importRoute('./routes/auth', 'auth');
-miembrosRoutes = importRoute('./routes/miembros', 'miembros');
-documentosRoutes = importRoute('./routes/documentos', 'documentos');
-programasRoutes = importRoute('./routes/programas', 'programas');
-notificacionesRoutes = importRoute('./routes/notificaciones', 'notificaciones');
-
-// Middleware con fallbacks
-try {
-  errorHandler = require('./middleware/errorHandler');
-} catch (error) {
-  console.warn('⚠️  ErrorHandler no encontrado, usando fallback');
-  errorHandler = (err, req, res, next) => {
-    console.error('❌ Error:', err.message);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor',
-      error: process.env.NODE_ENV === 'development' ? {
-        message: err.message,
-        stack: err.stack?.split('\n').slice(0, 5)
-      } : 'Error interno',
-      timestamp: new Date().toISOString()
-    });
-  };
-}
-
-try {
-  logger = require('./utils/logger');
-} catch (error) {
-  console.warn('⚠️  Logger no encontrado, usando console');
-  logger = {
-    info: (msg, ...args) => console.log(`ℹ️  ${msg}`, ...args),
-    warn: (msg, ...args) => console.warn(`⚠️  ${msg}`, ...args),
-    error: (msg, ...args) => console.error(`❌ ${msg}`, ...args),
-    debug: (msg, ...args) => process.env.NODE_ENV === 'development' && console.log(`🐛 ${msg}`, ...args)
-  };
-}
-
-// ====================================================
-// CONFIGURACIÓN DEL SERVIDOR
-// ====================================================
 const app = express();
-const server = createServer(app);
 
-// Función mejorada para detectar IP
-const getServerIP = () => {
-  // 1. Usar IP configurada si es específica
-  if (process.env.SERVER_IP && 
-      process.env.SERVER_IP !== 'localhost' && 
-      process.env.SERVER_IP !== '0.0.0.0') {
-    return process.env.SERVER_IP;
+// ✅ CONFIGURACIÓN DE HOSTING PROFESIONAL
+const SERVER_CONFIG = {
+  // IP del servidor de hosting
+  ip: process.env.SERVER_IP || '192.168.1.100',
+  port: process.env.PORT || 3001,
+  host: process.env.SERVER_HOST || '0.0.0.0',
+  environment: process.env.NODE_ENV || 'development',
+  
+  // Configuración de dominio (para producción)
+  domain: process.env.DOMAIN || null,
+  subdomain: process.env.SUBDOMAIN || 'api',
+  
+  // SSL/HTTPS
+  ssl: {
+    enabled: process.env.SSL_ENABLED === 'true',
+    keyPath: process.env.SSL_KEY_PATH || './ssl/private.key',
+    certPath: process.env.SSL_CERT_PATH || './ssl/certificate.crt',
+    caPath: process.env.SSL_CA_PATH || './ssl/ca_bundle.crt'
+  },
+  
+  // Configuración de proxy (para hosting con nginx/apache)
+  proxy: {
+    trust: process.env.TRUST_PROXY === 'true',
+    level: process.env.TRUST_PROXY_LEVEL || 1
+  },
+  
+  // Configuración de clustering
+  cluster: {
+    enabled: process.env.CLUSTER_ENABLED === 'true',
+    workers: process.env.CLUSTER_WORKERS || os.cpus().length
   }
-  
-  // 2. Detectar IP automáticamente
-  const interfaces = os.networkInterfaces();
-  
-  // Priorizar interfaces ethernet/wifi
-  const preferredInterfaces = ['eth0', 'wlan0', 'en0', 'Wi-Fi', 'Ethernet'];
-  
-  for (const interfaceName of preferredInterfaces) {
-    if (interfaces[interfaceName]) {
-      for (const iface of interfaces[interfaceName]) {
-        if (iface.family === 'IPv4' && !iface.internal) {
-          return iface.address;
-        }
-      }
-    }
-  }
-  
-  // 3. Buscar cualquier IP válida de red local
-  for (const [name, addresses] of Object.entries(interfaces)) {
-    for (const iface of addresses) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        // Priorizar rangos de red local comunes
-        if (iface.address.startsWith('192.168.') || 
-            iface.address.startsWith('10.') || 
-            iface.address.startsWith('172.')) {
-          return iface.address;
-        }
-      }
-    }
-  }
-  
-  // 4. Fallback
-  return process.env.DEFAULT_IP || '192.168.1.14';
 };
 
-const SERVER_IP = getServerIP();
-const PORT = parseInt(process.env.PORT || '3001');
-const HOST = process.env.SERVER_HOST || process.env.HOST || '0.0.0.0';
-
-// ====================================================
-// CONFIGURACIÓN CORS AVANZADA
-// ====================================================
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Permitir requests sin origin (apps móviles, Postman, curl, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Orígenes específicos permitidos
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-      `http://${SERVER_IP}:3000`,
-      `http://${SERVER_IP}:3001`,
-      // Agregar IP pública si existe
-      ...(process.env.PUBLIC_IP ? [`http://${process.env.PUBLIC_IP}:3000`, `http://${process.env.PUBLIC_IP}:3001`] : [])
-    ];
-    
-    // Patrones para redes locales
-    const localNetworkPatterns = [
-      /^http:\/\/localhost:\d+$/,
-      /^http:\/\/127\.0\.0\.1:\d+$/,
-      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,  // Clase C privada
-      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,   // Clase A privada
-      /^http:\/\/172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+:\d+$/, // Clase B privada
-      /^https?:\/\/.*\.local:\d+$/,          // Dominios .local
-      /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/   // Cualquier IP válida (para desarrollo)
-    ];
-    
-    // Verificar si el origen está permitido
-    const isExplicitlyAllowed = allowedOrigins.includes(origin);
-    const isLocalNetwork = localNetworkPatterns.some(pattern => pattern.test(origin));
-    
-    if (isExplicitlyAllowed || isLocalNetwork) {
-      callback(null, true);
-    } else {
-      logger.warn(`CORS: Origen bloqueado: ${origin}`);
-      
-      // En desarrollo, ser más permisivo con un warning
-      if (process.env.NODE_ENV === 'development') {
-        logger.warn('CORS: Permitiendo en modo desarrollo');
-        callback(null, true);
-      } else {
-        callback(new Error(`Origen ${origin} no permitido por política CORS`));
-      }
-    }
+// ✅ LOGGING AVANZADO CON WINSTON
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { 
+    service: 'orpheo-api',
+    server_ip: SERVER_CONFIG.ip,
+    environment: SERVER_CONFIG.environment
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-Requested-With',
-    'Accept',
-    'Origin',
-    'x-access-token',
-    'Cache-Control',
-    'Pragma',
-    'Expires',
-    'X-Forwarded-For',
-    'X-Real-IP',
-    'User-Agent'
-  ],
-  exposedHeaders: [
-    'X-Total-Count', 
-    'X-Request-ID', 
-    'X-Rate-Limit-Remaining',
-    'X-Rate-Limit-Reset'
-  ],
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-  maxAge: 86400 // Cache preflight por 24 horas
-};
-
-// ====================================================
-// CONFIGURACIÓN SOCKET.IO
-// ====================================================
-const io = new Server(server, {
-  cors: {
-    origin: function (origin, callback) {
-      // Socket.IO más permisivo para desarrollo
-      if (!origin || process.env.NODE_ENV === 'development') {
-        return callback(null, true);
-      }
-      
-      // Usar misma lógica que HTTP CORS pero más permisiva
-      const localPatterns = [
-        /^http:\/\/localhost:\d+$/,
-        /^http:\/\/127\.0\.0\.1:\d+$/,
-        /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
-        /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
-        /^http:\/\/172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+:\d+$/
-      ];
-      
-      const isLocal = localPatterns.some(pattern => pattern.test(origin));
-      callback(null, isLocal || process.env.NODE_ENV === 'development');
-    },
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true
-  },
-  transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  allowEIO3: true, // Compatibilidad con versiones anteriores
-  maxHttpBufferSize: 1e6, // 1MB para uploads pequeños
-  allowRequest: (req, callback) => {
-    // Permitir todas las conexiones en desarrollo
-    callback(null, process.env.NODE_ENV === 'development' || true);
-  }
+  transports: [
+    // Logs de error en archivo
+    new winston.transports.File({ 
+      filename: 'logs/error.log', 
+      level: 'error',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+      tailable: true
+    }),
+    // Logs combinados en archivo
+    new winston.transports.File({ 
+      filename: 'logs/combined.log',
+      maxsize: 5242880, // 5MB
+      maxFiles: 10,
+      tailable: true
+    })
+  ]
 });
 
-// ====================================================
-// FUNCIONES UTILITARIAS
-// ====================================================
-const getClientIP = (req) => {
-  return req?.ip || 
-         req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
-         req?.headers?.['x-real-ip'] ||
-         req?.connection?.remoteAddress ||
-         req?.socket?.remoteAddress ||
-         'unknown';
+// En desarrollo, también mostrar en consola
+if (SERVER_CONFIG.environment === 'development') {
+  logger.add(new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.colorize(),
+      winston.format.simple()
+    )
+  }));
+}
+
+// ✅ FUNCIÓN AVANZADA DE DETECCIÓN DE IP
+const getNetworkInfo = () => {
+  const interfaces = os.networkInterfaces();
+  const networkInfo = {
+    hostname: os.hostname(),
+    platform: os.platform(),
+    arch: os.arch(),
+    cpus: os.cpus().length,
+    memory: Math.round(os.totalmem() / 1024 / 1024 / 1024) + 'GB',
+    ips: []
+  };
+  
+  // Obtener todas las IPs disponibles
+  for (const name of Object.keys(interfaces)) {
+    for (const interface of interfaces[name]) {
+      if (interface.family === 'IPv4' && !interface.internal) {
+        networkInfo.ips.push({
+          interface: name,
+          address: interface.address,
+          netmask: interface.netmask
+        });
+      }
+    }
+  }
+  
+  return networkInfo;
 };
 
-// Rate limiting inteligente
-const createRateLimiter = (windowMs, max, message, options = {}) => {
+const networkInfo = getNetworkInfo();
+const SERVER_IP = SERVER_CONFIG.ip || (networkInfo.ips[0]?.address) || 'localhost';
+
+// ✅ CONFIGURACIÓN DE PROXY PARA HOSTING
+if (SERVER_CONFIG.proxy.trust) {
+  app.set('trust proxy', SERVER_CONFIG.proxy.level);
+  logger.info('🔗 Proxy trust habilitado', { level: SERVER_CONFIG.proxy.level });
+}
+
+// ✅ CONFIGURACIÓN CORS AVANZADA PARA HOSTING
+const getCorsOrigins = () => {
+  const origins = [
+    // URLs locales
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    
+    // URLs del servidor
+    `http://${SERVER_IP}:3000`,
+    `http://${SERVER_IP}:3001`,
+    `http://${SERVER_IP}:8081`,
+    `http://${SERVER_IP}:19000`,
+    `http://${SERVER_IP}:19006`,
+    
+    // URLs con dominio (si está configurado)
+    ...(SERVER_CONFIG.domain ? [
+      `https://${SERVER_CONFIG.domain}`,
+      `https://${SERVER_CONFIG.subdomain}.${SERVER_CONFIG.domain}`,
+      `http://${SERVER_CONFIG.domain}`,
+      `http://${SERVER_CONFIG.subdomain}.${SERVER_CONFIG.domain}`
+    ] : []),
+    
+    // URLs adicionales desde variables de entorno
+    ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [])
+  ];
+  
+  return origins.filter(Boolean);
+};
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (apps móviles, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = getCorsOrigins();
+    
+    // Patrones para redes locales y desarrollo
+    const localPatterns = [
+      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+      /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+:\d+$/,
+      /^http:\/\/localhost:\d+$/,
+      /^http:\/\/127\.0\.0\.1:\d+$/,
+      /^exp:\/\/\d+\.\d+\.\d+\.\d+:\d+$/,
+      /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/
+    ];
+    
+    // Verificar orígenes permitidos
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // En desarrollo, permitir patrones locales
+    if (SERVER_CONFIG.environment === 'development') {
+      const isLocalNetwork = localPatterns.some(pattern => pattern.test(origin));
+      if (isLocalNetwork) {
+        return callback(null, true);
+      }
+    }
+    
+    // Log y rechazar
+    logger.warn('🚫 CORS: Origen rechazado', { 
+      origin, 
+      allowed: allowedOrigins,
+      ip: SERVER_IP 
+    });
+    
+    callback(new Error('No permitido por CORS'), false);
+  },
+  credentials: true,
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'Pragma',
+    'X-API-Key',
+    'X-Client-Version',
+    'X-Request-ID'
+  ],
+  exposedHeaders: [
+    'X-Total-Count',
+    'X-Page-Count', 
+    'X-Current-Page',
+    'X-Rate-Limit-Remaining',
+    'X-Rate-Limit-Reset'
+  ]
+};
+
+app.use(cors(corsOptions));
+
+// ✅ MIDDLEWARE DE SEGURIDAD AVANZADO
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", `ws://${SERVER_IP}:*`, `wss://${SERVER_IP}:*`],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// ✅ RATE LIMITING AVANZADO
+const createRateLimiter = (windowMs, max, message) => {
   return rateLimit({
     windowMs,
     max,
     message: {
       success: false,
-      error: 'RATE_LIMIT_EXCEEDED',
-      message: message || 'Demasiadas peticiones desde esta IP',
-      retryAfter: Math.ceil(windowMs / 1000),
-      limit: max,
-      windowMs
+      message,
+      resetTime: new Date(Date.now() + windowMs)
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skipSuccessfulRequests: options.skipSuccessful || true,
-    skipFailedRequests: false,
-    keyGenerator: (req) => getClientIP(req),
     handler: (req, res) => {
-      const clientIP = getClientIP(req);
-      logger.warn(`Rate limit excedido para IP: ${clientIP} en ${req.path}`);
-      
+      logger.warn('🚨 Rate limit excedido', {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        path: req.path
+      });
       res.status(429).json({
         success: false,
-        error: 'RATE_LIMIT_EXCEEDED',
-        message: message || 'Demasiadas peticiones. Intenta más tarde.',
-        retryAfter: Math.ceil(windowMs / 1000),
-        clientIP: process.env.NODE_ENV === 'development' ? clientIP : 'hidden'
+        message,
+        resetTime: new Date(Date.now() + windowMs)
       });
-    },
-    ...options
+    }
   });
 };
 
 // Rate limiters específicos
-const rateLimiters = {
-  general: createRateLimiter(15 * 60 * 1000, 300, 'Límite general excedido'),
-  auth: createRateLimiter(15 * 60 * 1000, 30, 'Demasiados intentos de autenticación', { skipSuccessful: false }),
-  upload: createRateLimiter(60 * 60 * 1000, 20, 'Límite de uploads excedido'),
-  api: createRateLimiter(1 * 60 * 1000, 60, 'Límite de API excedido')
-};
+const apiLimiter = createRateLimiter(15 * 60 * 1000, 1000, 'Demasiadas peticiones a la API');
+const authLimiter = createRateLimiter(15 * 60 * 1000, 50, 'Demasiados intentos de autenticación');
+const uploadLimiter = createRateLimiter(60 * 60 * 1000, 100, 'Demasiadas subidas de archivos');
 
-// ====================================================
-// CONFIGURACIÓN DE MIDDLEWARE
-// ====================================================
+// Aplicar rate limiting
+app.use('/api/', apiLimiter);
+app.use('/api/auth/', authLimiter);
+app.use('/api/upload/', uploadLimiter);
 
-// Configurar confianza en proxy
-app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
+// ✅ SLOW DOWN MIDDLEWARE (reducir velocidad en lugar de bloquear)
+const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  delayAfter: 100, // Permitir 100 requests a velocidad normal
+  delayMs: 500 // Agregar 500ms de delay por request adicional
+});
+app.use('/api/', speedLimiter);
 
-// Seguridad mejorada
-app.use(helmet({
-  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginOpenerPolicy: false,
-  hsts: process.env.NODE_ENV === 'production' ? {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  } : false
-}));
-
-// Compresión
+// ✅ COMPRESSION AVANZADA
 app.use(compression({
-  level: process.env.NODE_ENV === 'production' ? 6 : 1,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+  level: 6,
   threshold: 1024
 }));
 
-// Logging mejorado
-const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
-app.use(morgan(morganFormat, { 
-  stream: { 
-    write: message => logger.info(message.trim()) 
-  },
-  skip: (req, res) => {
-    // No loggear health checks y assets estáticos frecuentes
-    const skipPaths = ['/health', '/favicon.ico', '/robots.txt'];
-    return skipPaths.some(path => req.url.includes(path));
-  }
-}));
-
-// CORS principal
-app.use(cors(corsOptions));
-
-// Body parsing con validación
+// ✅ BODY PARSING CON LÍMITES SEGUROS
 app.use(express.json({ 
-  limit: process.env.MAX_JSON_SIZE || '50mb',
+  limit: process.env.MAX_JSON_SIZE || '10mb',
   verify: (req, res, buf) => {
-    try {
-      req.rawBody = buf;
-    } catch (err) {
-      logger.warn('Error storing raw body:', err.message);
-    }
+    req.rawBody = buf;
   }
 }));
 
 app.use(express.urlencoded({ 
   extended: true, 
-  limit: process.env.MAX_URL_ENCODED_SIZE || '50mb' 
+  limit: process.env.MAX_URL_ENCODED_SIZE || '10mb' 
 }));
 
-// Middleware de información de request
-app.use((req, res, next) => {
-  req.startTime = Date.now();
-  req.requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  req.clientIP = getClientIP(req);
-  
-  // Headers útiles para debugging
-  res.setHeader('X-Request-ID', req.requestId);
-  res.setHeader('X-Server-IP', SERVER_IP);
-  
-  next();
+// ✅ LOGGING DE REQUESTS CON WINSTON
+app.use(expressWinston.logger({
+  winstonInstance: logger,
+  meta: true,
+  msg: 'HTTP {{req.method}} {{req.url}}',
+  expressFormat: true,
+  colorize: false,
+  ignoreRoute: (req, res) => {
+    // Ignorar health checks en logs
+    return req.url === '/health' || req.url === '/ping';
+  }
+}));
+
+// ✅ CONFIGURACIÓN DE UPLOADS AVANZADA
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(__dirname, '../uploads', getUploadFolder(file.mimetype));
+    fs.mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const extension = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + extension);
+  }
 });
 
-// Rate limiting por rutas
-app.use('/api/auth', rateLimiters.auth);
-app.use('/api/uploads', rateLimiters.upload);
-app.use('/api/', rateLimiters.api);
-app.use('/', rateLimiters.general);
-
-// ====================================================
-// CONFIGURACIÓN DE DIRECTORIOS Y ARCHIVOS ESTÁTICOS
-// ====================================================
-
-// Crear directorios necesarios
-const createDirectories = () => {
-  const dirs = [
-    path.join(__dirname, '../uploads'),
-    path.join(__dirname, '../logs'),
-    path.join(__dirname, '../temp')
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   ];
   
-  dirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      try {
-        fs.mkdirSync(dir, { recursive: true });
-        logger.info(`📁 Directorio creado: ${dir}`);
-      } catch (error) {
-        logger.warn(`⚠️  No se pudo crear directorio ${dir}:`, error.message);
-      }
-    }
-  });
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Tipo de archivo no permitido'), false);
+  }
 };
 
-createDirectories();
-
-// Servir archivos estáticos con headers optimizados
-const uploadsDir = path.join(__dirname, '../uploads');
-app.use('/uploads', express.static(uploadsDir, {
-  maxAge: process.env.NODE_ENV === 'production' ? '7d' : '1h',
-  etag: true,
-  lastModified: true,
-  setHeaders: (res, filePath) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', process.env.NODE_ENV === 'production' ? 'public, max-age=604800' : 'public, max-age=3600');
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
+    files: 10
   }
-}));
-
-// Middleware para Socket.IO
-app.use((req, res, next) => {
-  req.io = io;
-  next();
 });
 
-// Logging de desarrollo
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    const origin = req.get('Origin') || 'Direct';
-    logger.debug(`📡 ${req.method} ${req.url} - IP: ${req.clientIP} - Origin: ${origin}`);
-    next();
-  });
+function getUploadFolder(mimetype) {
+  if (mimetype.startsWith('image/')) return 'images';
+  if (mimetype === 'application/pdf') return 'documents';
+  if (mimetype.includes('word') || mimetype.includes('document')) return 'documents';
+  if (mimetype.includes('excel') || mimetype.includes('spreadsheet')) return 'spreadsheets';
+  if (mimetype.includes('powerpoint') || mimetype.includes('presentation')) return 'presentations';
+  return 'others';
 }
 
-// ====================================================
-// RUTAS PRINCIPALES
-// ====================================================
-
-// Ruta raíz informativa
-app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: '🏛️ Orpheo - Sistema de Gestión Masónica',
-    version: '1.0.0',
-    timestamp: new Date().toISOString(),
-    server: {
-      environment: process.env.NODE_ENV || 'development',
-      ip: SERVER_IP,
-      port: PORT,
-      uptime: Math.floor(process.uptime()),
-      node_version: process.version
-    },
-    links: {
-      api: `http://${SERVER_IP}:${PORT}/api`,
-      health: `http://${SERVER_IP}:${PORT}/health`,
-      docs: `http://${SERVER_IP}:${PORT}/api/docs`,
-      network: `http://${SERVER_IP}:${PORT}/network-info`
-    },
-    client: {
-      ip: req.clientIP,
-      requestId: req.requestId
+// ✅ WEBSOCKET CONFIGURACIÓN AVANZADA
+const createSocketServer = (server) => {
+  const io = new Server(server, {
+    cors: corsOptions,
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    upgradeTimeout: 30000,
+    maxHttpBufferSize: 1e6,
+    allowEIO3: true
+  });
+  
+  // Middleware de autenticación para sockets
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token || socket.handshake.headers.authorization;
+      if (!token) {
+        return next(new Error('Token de autenticación requerido'));
+      }
+      
+      // Validar token aquí
+      // const user = await validateToken(token);
+      // socket.userId = user.id;
+      
+      next();
+    } catch (error) {
+      next(new Error('Token inválido'));
     }
   });
-});
+  
+  io.on('connection', (socket) => {
+    logger.info('🔌 Cliente conectado', {
+      socketId: socket.id,
+      ip: socket.handshake.address,
+      userAgent: socket.handshake.headers['user-agent']
+    });
+    
+    socket.on('join-room', (room) => {
+      socket.join(room);
+      logger.info('📋 Cliente se unió a sala', {
+        socketId: socket.id,
+        room
+      });
+    });
+    
+    socket.on('leave-room', (room) => {
+      socket.leave(room);
+      logger.info('📋 Cliente salió de sala', {
+        socketId: socket.id,
+        room
+      });
+    });
+    
+    socket.on('disconnect', (reason) => {
+      logger.info('🔌 Cliente desconectado', {
+        socketId: socket.id,
+        reason
+      });
+    });
+    
+    socket.on('error', (error) => {
+      logger.error('🔌 Error en socket', {
+        socketId: socket.id,
+        error: error.message
+      });
+    });
+  });
+  
+  return io;
+};
 
-// Health check completo
-app.get('/health', (req, res) => {
-  const uptime = process.uptime();
+// ✅ HEALTH CHECKS AVANZADOS
+app.get('/health', async (req, res) => {
   const memoryUsage = process.memoryUsage();
+  const uptime = process.uptime();
   
-  // Test de conectividad de base de datos
-  let dbStatus = 'unknown';
-  if (db) {
-    dbStatus = 'connected';
-    // Aquí podrías agregar un ping real a la BD
-  } else {
-    dbStatus = 'not_configured';
-  }
-  
-  const healthData = {
-    success: true,
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: {
-      seconds: Math.floor(uptime),
-      readable: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${Math.floor(uptime % 60)}s`
-    },
-    environment: process.env.NODE_ENV || 'development',
-    version: '1.0.0',
-    server: {
-      host: HOST,
-      port: PORT,
-      ip: SERVER_IP,
-      node_version: process.version,
-      platform: os.platform(),
-      arch: os.arch()
-    },
-    memory: {
-      used: Math.round(memoryUsage.heapUsed / 1024 / 1024) + ' MB',
-      total: Math.round(memoryUsage.heapTotal / 1024 / 1024) + ' MB',
-      external: Math.round(memoryUsage.external / 1024 / 1024) + ' MB',
-      rss: Math.round(memoryUsage.rss / 1024 / 1024) + ' MB'
-    },
-    services: {
-      database: dbStatus,
-      websocket: 'active',
-      uploads: fs.existsSync(uploadsDir) ? 'available' : 'unavailable'
-    },
-    client: {
-      ip: req.clientIP,
-      userAgent: req.get('User-Agent')?.substring(0, 100) || 'N/A',
-      requestId: req.requestId
+  try {
+    // Verificar conexión a base de datos
+    let dbStatus = 'disconnected';
+    let dbLatency = null;
+    
+    try {
+      const start = Date.now();
+      await db.sequelize.authenticate();
+      dbLatency = Date.now() - start;
+      dbStatus = 'connected';
+    } catch (error) {
+      dbStatus = 'error';
     }
-  };
-  
-  res.status(200).json(healthData);
-});
-
-// Información de red detallada
-app.get('/network-info', (req, res) => {
-  const interfaces = os.networkInterfaces();
-  const networkInfo = {};
-  
-  Object.keys(interfaces).forEach(name => {
-    networkInfo[name] = interfaces[name]
-      .filter(iface => iface.family === 'IPv4')
-      .map(iface => ({
-        address: iface.address,
-        internal: iface.internal,
-        netmask: iface.netmask,
-        mac: iface.mac
-      }));
-  });
-  
-  res.json({
-    success: true,
-    hostname: os.hostname(),
-    platform: os.platform(),
-    arch: os.arch(),
-    detectedIP: SERVER_IP,
-    networkInterfaces: networkInfo,
-    accessUrls: {
-      local: {
-        api: `http://localhost:${PORT}/api`,
-        health: `http://localhost:${PORT}/health`,
-        root: `http://localhost:${PORT}`
+    
+    const healthData = {
+      success: true,
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: {
+        seconds: Math.floor(uptime),
+        human: formatUptime(uptime)
+      },
+      server: {
+        ip: SERVER_IP,
+        hostname: networkInfo.hostname,
+        port: SERVER_CONFIG.port,
+        environment: SERVER_CONFIG.environment,
+        platform: networkInfo.platform,
+        arch: networkInfo.arch,
+        cpus: networkInfo.cpus,
+        node_version: process.version,
+        ssl_enabled: SERVER_CONFIG.ssl.enabled,
+        domain: SERVER_CONFIG.domain || 'none'
       },
       network: {
-        api: `http://${SERVER_IP}:${PORT}/api`,
-        health: `http://${SERVER_IP}:${PORT}/health`,
-        root: `http://${SERVER_IP}:${PORT}`
+        interfaces: networkInfo.ips,
+        cors_origins: getCorsOrigins().length
+      },
+      database: {
+        status: dbStatus,
+        latency: dbLatency ? `${dbLatency}ms` : null
+      },
+      memory: {
+        used: Math.round(memoryUsage.heapUsed / 1024 / 1024) + 'MB',
+        total: Math.round(memoryUsage.heapTotal / 1024 / 1024) + 'MB',
+        external: Math.round(memoryUsage.external / 1024 / 1024) + 'MB',
+        rss: Math.round(memoryUsage.rss / 1024 / 1024) + 'MB',
+        system_total: networkInfo.memory
+      },
+      services: {
+        api: 'running',
+        websocket: 'active',
+        database: dbStatus,
+        uploads: fs.existsSync('./uploads') ? 'ready' : 'not_configured'
       }
-    },
-    corsConfiguration: {
-      allowedOrigins: [
-        'http://localhost:3000',
-        `http://${SERVER_IP}:3000`
-      ],
-      development: process.env.NODE_ENV === 'development'
+    };
+    
+    res.json(healthData);
+    
+  } catch (error) {
+    logger.error('❌ Health check falló', { error: error.message });
+    res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
+});
+
+// ✅ ENDPOINT DE MÉTRICAS AVANZADAS
+app.get('/metrics', (req, res) => {
+  const memoryUsage = process.memoryUsage();
+  const cpuUsage = process.cpuUsage();
+  
+  res.json({
+    success: true,
+    metrics: {
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: {
+        heap_used: memoryUsage.heapUsed,
+        heap_total: memoryUsage.heapTotal,
+        external: memoryUsage.external,
+        rss: memoryUsage.rss
+      },
+      cpu: {
+        user: cpuUsage.user,
+        system: cpuUsage.system
+      },
+      system: {
+        load_average: os.loadavg(),
+        free_memory: os.freemem(),
+        total_memory: os.totalmem()
+      }
     }
   });
 });
 
-// Información de la API
+// ✅ ENDPOINT DE INFORMACIÓN DE RED AVANZADO
+app.get('/network-info', (req, res) => {
+  res.json({
+    success: true,
+    network: networkInfo,
+    server: {
+      ip: SERVER_IP,
+      configured_ip: SERVER_CONFIG.ip,
+      domain: SERVER_CONFIG.domain,
+      ssl_enabled: SERVER_CONFIG.ssl.enabled
+    },
+    access_urls: {
+      local: {
+        api: `http://localhost:${SERVER_CONFIG.port}/api`,
+        health: `http://localhost:${SERVER_CONFIG.port}/health`,
+        metrics: `http://localhost:${SERVER_CONFIG.port}/metrics`
+      },
+      network: {
+        api: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api`,
+        health: `http://${SERVER_IP}:${SERVER_CONFIG.port}/health`,
+        metrics: `http://${SERVER_IP}:${SERVER_CONFIG.port}/metrics`
+      },
+      ...(SERVER_CONFIG.domain && {
+        domain: {
+          api: `https://${SERVER_CONFIG.subdomain}.${SERVER_CONFIG.domain}/api`,
+          health: `https://${SERVER_CONFIG.subdomain}.${SERVER_CONFIG.domain}/health`
+        }
+      })
+    },
+    cors: {
+      origins_count: getCorsOrigins().length,
+      origins: getCorsOrigins()
+    }
+  });
+});
+
+// ✅ PING ENDPOINT SIMPLE
+app.get('/ping', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'pong', 
+    timestamp: new Date().toISOString(),
+    server_ip: SERVER_IP
+  });
+});
+
+// ✅ RUTAS DE LA API
+app.use('/api/auth', authRoutes);
+app.use('/api/miembros', miembrosRoutes);
+app.use('/api/documentos', documentosRoutes);
+app.use('/api/programas', programasRoutes);
+app.use('/api/notificaciones', notificacionesRoutes);
+
+// ✅ RUTA RAÍZ DE LA API MEJORADA
 app.get('/api', (req, res) => {
   res.json({
     success: true,
-    message: '🏛️ API Orpheo - Sistema de Gestión Masónica',
-    version: '1.0.0',
+    message: 'API Orpheo - Sistema de Gestión Masónica',
+    version: '2.0.0',
     timestamp: new Date().toISOString(),
     server: {
       ip: SERVER_IP,
-      port: PORT,
-      environment: process.env.NODE_ENV || 'development'
+      hostname: networkInfo.hostname,
+      port: SERVER_CONFIG.port,
+      environment: SERVER_CONFIG.environment,
+      uptime: formatUptime(process.uptime()),
+      domain: SERVER_CONFIG.domain || null
     },
     client: {
-      ip: req.clientIP,
-      userAgent: req.get('User-Agent'),
-      origin: req.get('Origin') || 'Direct access',
-      requestId: req.requestId
+      ip: req.ip,
+      origin: req.headers.origin,
+      user_agent: req.headers['user-agent'],
+      real_ip: req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.ip
     },
     endpoints: {
-      auth: {
-        path: '/api/auth',
-        methods: ['GET', 'POST'],
-        description: 'Autenticación y gestión de usuarios'
-      },
-      miembros: {
-        path: '/api/miembros',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Gestión de miembros de la logia'
-      },
-      documentos: {
-        path: '/api/documentos',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Sistema de documentos y archivos'
-      },
-      programas: {
-        path: '/api/programas',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Programas y eventos de la logia'
-      },
-      notificaciones: {
-        path: '/api/notificaciones',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Sistema de notificaciones'
+      health: `http://${SERVER_IP}:${SERVER_CONFIG.port}/health`,
+      metrics: `http://${SERVER_IP}:${SERVER_CONFIG.port}/metrics`,
+      network_info: `http://${SERVER_IP}:${SERVER_CONFIG.port}/network-info`,
+      ping: `http://${SERVER_IP}:${SERVER_CONFIG.port}/ping`,
+      api: {
+        auth: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api/auth`,
+        miembros: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api/miembros`,
+        documentos: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api/documentos`,
+        programas: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api/programas`,
+        notificaciones: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api/notificaciones`
       }
     },
-    utilities: {
-      health: `http://${SERVER_IP}:${PORT}/health`,
-      networkInfo: `http://${SERVER_IP}:${PORT}/network-info`,
-      routes: `http://${SERVER_IP}:${PORT}/api/routes`
+    features: {
+      ssl: SERVER_CONFIG.ssl.enabled,
+      cors: true,
+      rate_limiting: true,
+      compression: true,
+      websocket: true,
+      file_upload: true,
+      logging: true
     }
   });
 });
 
-// ====================================================
-// REGISTRO DE RUTAS DE LA API
-// ====================================================
-logger.info('📍 Registrando rutas de la API...');
+// ✅ SERVIR ARCHIVOS ESTÁTICOS CON OPTIMIZACIÓN
+app.use('/uploads', express.static('uploads', {
+  maxAge: '1d',
+  etag: true,
+  lastModified: true,
+  cacheControl: true
+}));
 
-app.use('/api/auth', authRoutes);
-logger.info('✅ Ruta /api/auth registrada');
+// ✅ MIDDLEWARE DE LOGGING DE ERRORES
+app.use(expressWinston.errorLogger({
+  winstonInstance: logger,
+  meta: true,
+  msg: 'Error {{err.message}}'
+}));
 
-app.use('/api/miembros', miembrosRoutes);
-logger.info('✅ Ruta /api/miembros registrada');  
-
-app.use('/api/documentos', documentosRoutes);
-logger.info('✅ Ruta /api/documentos registrada');
-
-app.use('/api/programas', programasRoutes);
-logger.info('✅ Ruta /api/programas registrada');
-
-app.use('/api/notificaciones', notificacionesRoutes);
-logger.info('✅ Ruta /api/notificaciones registrada');
-
-// Ruta de diagnóstico para listar todas las rutas
-app.get('/api/routes', (req, res) => {
-  const routes = [];
+// ✅ MIDDLEWARE DE MANEJO DE ERRORES AVANZADO
+app.use((error, req, res, next) => {
+  logger.error('🚨 Error en aplicación', {
+    error: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.headers['user-agent']
+  });
   
-  const extractRoutes = (stack, basePath = '') => {
-    stack.forEach(layer => {
-      if (layer.route) {
-        // Ruta directa
-        routes.push({
-          path: basePath + layer.route.path,
-          methods: Object.keys(layer.route.methods).map(m => m.toUpperCase()),
-          middleware: layer.route.stack.length
-        });
-      } else if (layer.name === 'router' && layer.handle.stack) {
-        // Router anidado
-        const routerPath = layer.regexp.source
-          .replace('\\/?(?=\\/|$)', '')
-          .replace(/\\\//g, '/')
-          .replace(/\$.*/, '');
-        extractRoutes(layer.handle.stack, basePath + routerPath);
-      }
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      success: false,
+      message: 'JSON inválido',
+      error: 'Bad Request'
     });
-  };
+  }
   
-  extractRoutes(app._router.stack);
-  
-  res.json({
-    success: true,
-    totalRoutes: routes.length,
-    routes: routes.sort((a, b) => a.path.localeCompare(b.path)),
-    serverInfo: {
-      ip: SERVER_IP,
-      port: PORT,
-      timestamp: new Date().toISOString()
-    }
-  });
-});
-
-// ====================================================
-// CONFIGURACIÓN SOCKET.IO
-// ====================================================
-io.on('connection', (socket) => {
-  const clientIP = socket.handshake.address;
-  logger.info(`🔌 Socket conectado: ${socket.id} desde ${clientIP}`);
-  
-  // Información de bienvenida
-  socket.emit('welcome', {
-    message: 'Conectado al sistema Orpheo',
-    serverId: `${SERVER_IP}:${PORT}`,
-    socketId: socket.id,
-    serverTime: new Date().toISOString(),
-    clientIP: process.env.NODE_ENV === 'development' ? clientIP : 'hidden'
-  });
-  
-  // Unirse a sala general
-  socket.join('general');
-  
-  // Manejo de eventos personalizados
-  socket.on('join_user_room', (userId) => {
-    socket.join(`user_${userId}`);
-    logger.info(`👤 Usuario ${userId} se unió a su sala personal`);
-  });
-  
-  socket.on('join_room', (roomId) => {
-    socket.join(roomId);
-    socket.emit('room_joined', { room: roomId });
-    logger.info(`🏠 Socket ${socket.id} se unió a sala ${roomId}`);
-  });
-  
-  socket.on('ping', (data) => {
-    socket.emit('pong', { 
-      timestamp: Date.now(),
-      serverTime: new Date().toISOString(),
-      originalData: data
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      success: false,
+      message: 'Archivo muy grande',
+      error: 'Payload Too Large'
     });
-  });
+  }
   
-  socket.on('disconnect', (reason) => {
-    logger.info(`🔌 Socket desconectado: ${socket.id} - Razón: ${reason}`);
-  });
-  
-  socket.on('error', (error) => {
-    logger.error(`❌ Socket error: ${socket.id}`, error);
-  });
-});
-
-// ====================================================
-// MIDDLEWARE DE MANEJO DE ERRORES
-// ====================================================
-app.use(errorHandler);
-
-// Manejo de rutas no encontradas - DEBE IR AL FINAL
-app.use('*', (req, res) => {
-  res.status(404).json({
+  res.status(error.status || 500).json({
     success: false,
-    error: 'ROUTE_NOT_FOUND',
-    message: 'Ruta no encontrada',
+    message: SERVER_CONFIG.environment === 'production' 
+      ? 'Error interno del servidor' 
+      : error.message,
+    ...(SERVER_CONFIG.environment === 'development' && { 
+      stack: error.stack,
+      details: error 
+    })
+  });
+});
+
+// ✅ MANEJO DE RUTAS NO ENCONTRADAS
+app.use('*', (req, res) => {
+  logger.warn('🔍 Ruta no encontrada', {
     path: req.originalUrl,
     method: req.method,
-    timestamp: new Date().toISOString(),
-    server: {
-      ip: SERVER_IP,
-      port: PORT
-    },
-    availableEndpoints: [
-      '/',
-      '/api',
-      '/health',
-      '/network-info',
-      '/api/auth',
-      '/api/miembros',
-      '/api/documentos',
-      '/api/programas',
-      '/api/notificaciones',
-      '/api/routes'
-    ],
-    client: {
-      ip: req.clientIP,
-      requestId: req.requestId
-    }
+    ip: req.ip
+  });
+  
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint no encontrado',
+    path: req.originalUrl,
+    method: req.method,
+    server_ip: SERVER_IP,
+    available_endpoints: [
+      `http://${SERVER_IP}:${SERVER_CONFIG.port}/api`,
+      `http://${SERVER_IP}:${SERVER_CONFIG.port}/health`,
+      `http://${SERVER_IP}:${SERVER_CONFIG.port}/network-info`,
+      `http://${SERVER_IP}:${SERVER_CONFIG.port}/metrics`
+    ]
   });
 });
 
-// ====================================================
-// FUNCIONES DE INICIO Y UTILIDADES
-// ====================================================
+// ==========================================
+// FUNCIONES AUXILIARES
+// ==========================================
 
-// Función para mostrar información de red al iniciar
-const showNetworkInfo = () => {
-  console.log('\n🌐 ===== INFORMACIÓN DE RED ORPHEO =====');
-  console.log(`🖥️  Servidor: ${os.hostname()}`);
-  console.log(`📍 IP Detectada: ${SERVER_IP}`);
-  console.log(`🔗 Host: ${HOST}:${PORT}`);
-  console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`⚡ Node.js: ${process.version}`);
-  console.log(`💾 Plataforma: ${os.platform()} ${os.arch()}`);
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
   
-  console.log('\n📱 URLs de Acceso:');
-  console.log(`   🌐 Raíz: http://${SERVER_IP}:${PORT}/`);
-  console.log(`   🚀 API: http://${SERVER_IP}:${PORT}/api`);
-  console.log(`   ❤️  Health: http://${SERVER_IP}:${PORT}/health`);
-  console.log(`   🔗 Network: http://${SERVER_IP}:${PORT}/network-info`);
-  console.log(`   📋 Routes: http://${SERVER_IP}:${PORT}/api/routes`);
-  
-  console.log('\n📲 Para dispositivos móviles/otras PCs:');
-  console.log(`   Frontend: http://${SERVER_IP}:3000`);
-  console.log(`   API Base URL: http://${SERVER_IP}:${PORT}/api`);
-  console.log(`   WebSocket URL: http://${SERVER_IP}:${PORT}`);
-  
-  console.log('\n🔧 Configuración CORS:');
-  console.log(`   - Permitida para redes locales (192.168.x.x, 10.x.x.x, 172.x.x.x)`);
-  console.log(`   - Socket.IO habilitado para todas las IPs locales`);
-  console.log(`   - Modo desarrollo: ${process.env.NODE_ENV === 'development' ? 'Permisivo' : 'Restrictivo'}`);
-  
-  console.log('\n🛡️  Seguridad:');
-  console.log(`   - Rate limiting: ✅ Activo`);
-  console.log(`   - Helmet: ✅ Configurado`);
-  console.log(`   - Compression: ✅ Habilitado`);
-  console.log(`   - Request ID tracking: ✅ Activo`);
-  
-  console.log('\n💾 Servicios:');
-  console.log(`   - Base de datos: ${db ? '✅ Conectada' : '⚠️  No configurada'}`);
-  console.log(`   - WebSocket: ✅ Activo`);
-  console.log(`   - Uploads: ✅ Configurado`);
-  console.log('=====================================\n');
-};
+  return `${days}d ${hours}h ${minutes}m ${secs}s`;
+}
 
-// Función para verificar prerrequisitos
-const checkPrerequisites = async () => {
-  const checks = [];
-  
-  // Verificar Node.js version
-  const nodeVersion = process.version;
-  const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0]);
-  checks.push({
-    name: 'Node.js Version',
-    status: majorVersion >= 16 ? 'ok' : 'warning',
-    message: `${nodeVersion} ${majorVersion >= 16 ? '(Compatible)' : '(Recomendado >= 16.x)'}`
-  });
-  
-  // Verificar variables de entorno críticas
-  const criticalEnvVars = ['JWT_SECRET', 'DATABASE_URL'];
-  criticalEnvVars.forEach(envVar => {
-    checks.push({
-      name: `ENV: ${envVar}`,
-      status: process.env[envVar] ? 'ok' : 'warning',
-      message: process.env[envVar] ? 'Configurado' : 'No configurado'
-    });
-  });
-  
-  // Verificar permisos de directorio
+async function initializeDatabase() {
   try {
-    const testDir = path.join(__dirname, '../uploads');
-    fs.accessSync(testDir, fs.constants.W_OK);
-    checks.push({
-      name: 'Permisos de uploads',
-      status: 'ok',
-      message: 'Directorio escribible'
-    });
+    logger.info('🔍 Verificando conexión a la base de datos...');
+    await db.sequelize.authenticate();
+    logger.info('✅ Conexión a PostgreSQL establecida correctamente');
+    
+    if (SERVER_CONFIG.environment === 'development') {
+      logger.info('🔄 Sincronizando modelos de base de datos...');
+      await db.sequelize.sync({ alter: true });
+      logger.info('✅ Modelos sincronizados correctamente');
+    }
+    
+    return true;
   } catch (error) {
-    checks.push({
-      name: 'Permisos de uploads',
-      status: 'error',
-      message: 'Sin permisos de escritura'
+    logger.error('❌ Error conectando a la base de datos', { 
+      error: error.message,
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      database: process.env.DB_NAME
     });
+    return false;
+  }
+}
+
+function createServer() {
+  let server;
+  
+  if (SERVER_CONFIG.ssl.enabled) {
+    try {
+      const sslOptions = {
+        key: fs.readFileSync(SERVER_CONFIG.ssl.keyPath),
+        cert: fs.readFileSync(SERVER_CONFIG.ssl.certPath)
+      };
+      
+      if (fs.existsSync(SERVER_CONFIG.ssl.caPath)) {
+        sslOptions.ca = fs.readFileSync(SERVER_CONFIG.ssl.caPath);
+      }
+      
+      server = createHttpsServer(sslOptions, app);
+      logger.info('🔒 Servidor HTTPS configurado');
+    } catch (error) {
+      logger.warn('⚠️ No se pudo configurar SSL, usando HTTP', { error: error.message });
+      server = createServer(app);
+    }
+  } else {
+    server = createServer(app);
   }
   
-  // Mostrar resultados
-  console.log('\n🔍 ===== VERIFICACIÓN DE PREREQUISITOS =====');
-  checks.forEach(check => {
-    const icon = check.status === 'ok' ? '✅' : check.status === 'warning' ? '⚠️ ' : '❌';
-    console.log(`${icon} ${check.name}: ${check.message}`);
-  });
-  console.log('==========================================\n');
-  
-  return checks;
-};
+  return server;
+}
 
-// Inicializar servidor con verificaciones
-const startServer = async () => {
+// ==========================================
+// INICIALIZACIÓN DEL SERVIDOR
+// ==========================================
+
+async function startServer() {
   try {
-    console.log('🚀 ===== INICIANDO SERVIDOR ORPHEO =====');
+    // Crear directorio de logs
+    fs.mkdirSync('logs', { recursive: true });
     
-    // 1. Verificar prerrequisitos
-    await checkPrerequisites();
+    // Crear directorio de uploads
+    fs.mkdirSync('uploads', { recursive: true });
     
-    // 2. Conectar a la base de datos si está disponible
-    let dbConnected = false;
-    if (db) {
-      try {
-        logger.info('🔌 Conectando a la base de datos...');
-        
-        // Intentar diferentes métodos de conexión según el ORM
-        if (typeof db.testConnection === 'function') {
-          dbConnected = await db.testConnection();
-        } else if (typeof db.authenticate === 'function') {
-          await db.authenticate();
-          dbConnected = true;
-        } else if (typeof db.query === 'function') {
-          await db.query('SELECT 1');
-          dbConnected = true;
-        } else {
-          logger.info('🔌 Base de datos configurada (sin test de conexión disponible)');
-          dbConnected = true;
-        }
-        
-        if (dbConnected) {
-          logger.info('✅ Base de datos conectada exitosamente');
-        }
-        
-      } catch (error) {
-        logger.warn('⚠️  Base de datos no disponible:', error.message);
-        dbConnected = false;
-        
-        // En desarrollo, continuar sin BD
-        if (process.env.NODE_ENV !== 'production') {
-          logger.info('ℹ️  Continuando sin base de datos en modo desarrollo');
-        }
-      }
-    } else {
-      logger.info('ℹ️  Base de datos no configurada - continuando sin BD');
-    }
+    // Inicializar base de datos
+    const dbConnected = await initializeDatabase();
     
-    // 3. Sincronizar modelos en desarrollo
-    if (dbConnected && process.env.NODE_ENV === 'development' && db.syncModels) {
-      try {
-        logger.info('🔄 Sincronizando modelos de base de datos...');
-        await db.syncModels();
-        logger.info('✅ Modelos sincronizados correctamente');
-      } catch (syncError) {
-        logger.warn('⚠️  Error al sincronizar modelos:', syncError.message);
-      }
-    }
-    
-    // 4. Iniciar servidor HTTP
-    const startTime = Date.now();
-    
-    server.listen(PORT, HOST, () => {
-      const startupTime = Date.now() - startTime;
-      
-      console.log('🎉 ===== SERVIDOR ORPHEO INICIADO EXITOSAMENTE =====');
-      showNetworkInfo();
-      
-      logger.info(`✅ Servidor HTTP iniciado en ${HOST}:${PORT}`);
-      logger.info(`⚡ Tiempo de inicio: ${startupTime}ms`);
-      logger.info(`🌍 Accesible desde la red en: http://${SERVER_IP}:${PORT}`);
-      
-      // Instrucciones para el usuario
-      console.log('🎯 ===== INSTRUCCIONES DE USO =====');
-      console.log('Para probar la API, visita:');
-      console.log(`✅ http://${SERVER_IP}:${PORT}/api`);
-      console.log(`✅ http://${SERVER_IP}:${PORT}/health`);
-      console.log(`✅ http://${SERVER_IP}:${PORT}/network-info`);
-      console.log('\n📱 Para conectar tu app móvil:');
-      console.log(`Base URL: http://${SERVER_IP}:${PORT}/api`);
-      console.log('=====================================\n');
-      
-      // Emitir evento de inicio exitoso
-      io.emit('server_started', {
-        message: 'Servidor Orpheo iniciado correctamente',
-        timestamp: new Date().toISOString(),
-        serverInfo: {
-          ip: SERVER_IP,
-          port: PORT,
-          environment: process.env.NODE_ENV || 'development'
-        }
-      });
-    });
-    
-  } catch (error) {
-    logger.error('❌ Error crítico al iniciar servidor:', error);
-    console.error('\n🔥 ===== ERROR CRÍTICO =====');
-    console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('===========================\n');
-    
-    // En desarrollo, mostrar ayuda
-    if (process.env.NODE_ENV === 'development') {
-      console.log('💡 ===== POSIBLES SOLUCIONES =====');
-      console.log('1. Verificar que PostgreSQL esté ejecutándose');
-      console.log('2. Revisar las variables de entorno en .env');
-      console.log('3. Verificar que el puerto 3001 no esté en uso');
-      console.log('4. Ejecutar: npm run init-full para configurar la BD');
-      console.log('=====================================\n');
-      
-      // En desarrollo, intentar iniciar sin BD
-      logger.warn('⚠️  Intentando continuar en modo desarrollo sin BD...');
-      
-      server.listen(PORT, HOST, () => {
-        console.log('🚀 ===== SERVIDOR ORPHEO INICIADO (MODO DESARROLLO SIN BD) =====');
-        showNetworkInfo();
-        console.log('⚠️  ATENCIÓN: Ejecutándose sin base de datos');
-        console.log('=====================================\n');
-      });
-    } else {
-      // En producción, salir
+    if (!dbConnected && SERVER_CONFIG.environment === 'production') {
+      logger.error('❌ Base de datos requerida en producción');
       process.exit(1);
     }
-  }
-};
-
-// Función para cierre elegante del servidor
-const gracefulShutdown = (signal) => {
-  logger.info(`📴 Señal ${signal} recibida. Iniciando cierre elegante...`);
-  
-  // Notificar a clientes conectados
-  io.emit('server_shutdown', {
-    message: 'Servidor cerrándose por mantenimiento',
-    timestamp: new Date().toISOString(),
-    reconnectDelay: 5000
-  });
-  
-  // Cerrar servidor HTTP (no acepta nuevas conexiones)
-  server.close((err) => {
-    if (err) {
-      logger.error('❌ Error al cerrar servidor HTTP:', err);
-    } else {
-      logger.info('✅ Servidor HTTP cerrado correctamente');
+    
+    if (!dbConnected) {
+      logger.warn('⚠️ Continuando sin base de datos (modo desarrollo)');
     }
     
-    // Cerrar Socket.IO
-    io.close((socketErr) => {
-      if (socketErr) {
-        logger.error('❌ Error al cerrar Socket.IO:', socketErr);
-      } else {
-        logger.info('✅ Socket.IO cerrado correctamente');
-      }
+    // Crear servidor
+    const server = createServer();
+    
+    // Configurar WebSocket
+    const io = createSocketServer(server);
+    app.set('io', io);
+    
+    // Iniciar servidor
+    server.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, () => {
+      logger.info('\n🚀 ===== SERVIDOR ORPHEO INICIADO =====');
+      logger.info('📡 Configuración del servidor', {
+        environment: SERVER_CONFIG.environment,
+        host: SERVER_CONFIG.host,
+        port: SERVER_CONFIG.port,
+        ip_configurada: SERVER_CONFIG.ip,
+        ip_detectada: networkInfo.ips[0]?.address || 'N/A',
+        hostname: networkInfo.hostname,
+        ssl_enabled: SERVER_CONFIG.ssl.enabled,
+        domain: SERVER_CONFIG.domain || 'N/A',
+        cluster_enabled: SERVER_CONFIG.cluster.enabled
+      });
       
-      // Cerrar conexión de base de datos
-      if (db && typeof db.close === 'function') {
-        db.close()
-          .then(() => {
-            logger.info('✅ Base de datos desconectada correctamente');
-            process.exit(0);
-          })
-          .catch((dbErr) => {
-            logger.error('❌ Error al cerrar base de datos:', dbErr);
-            process.exit(1);
-          });
+      logger.info('🔗 URLs de acceso', {
+        local: `http://localhost:${SERVER_CONFIG.port}/api`,
+        network: `http://${SERVER_IP}:${SERVER_CONFIG.port}/api`,
+        health: `http://${SERVER_IP}:${SERVER_CONFIG.port}/health`,
+        metrics: `http://${SERVER_IP}:${SERVER_CONFIG.port}/metrics`,
+        ...(SERVER_CONFIG.domain && {
+          domain: `https://${SERVER_CONFIG.subdomain}.${SERVER_CONFIG.domain}/api`
+        })
+      });
+      
+      logger.info('📱 URLs para frontend', {
+        web: `http://${SERVER_IP}:3000`,
+        expo_metro: `http://${SERVER_IP}:8081`,
+        expo_web: `http://${SERVER_IP}:19006`
+      });
+      
+      logger.info('✅ Servidor listo para recibir conexiones');
+      logger.info('=====================================\n');
+    });
+    
+    // Manejo de errores del servidor
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`❌ Puerto ${SERVER_CONFIG.port} ya está en uso`);
       } else {
-        logger.info('ℹ️  Sin conexión de BD que cerrar');
+        logger.error('❌ Error en servidor', { error: error.message });
+      }
+      process.exit(1);
+    });
+    
+    return { server, io };
+    
+  } catch (error) {
+    logger.error('❌ Error al iniciar el servidor', { error: error.message });
+    process.exit(1);
+  }
+}
+
+// ==========================================
+// MANEJO DE PROCESOS Y CLUSTERING
+// ==========================================
+
+// Manejo de cierre graceful
+function gracefulShutdown(signal) {
+  logger.info(`🛑 ${signal} recibido, iniciando cierre graceful...`);
+  
+  // Cerrar servidor HTTP
+  if (global.server) {
+    global.server.close(() => {
+      logger.info('✅ Servidor HTTP cerrado');
+      
+      // Cerrar conexiones de base de datos
+      if (db && db.sequelize) {
+        db.sequelize.close().then(() => {
+          logger.info('✅ Conexiones de base de datos cerradas');
+          process.exit(0);
+        });
+      } else {
         process.exit(0);
       }
     });
-  });
-  
-  // Timeout de seguridad - forzar cierre después de 15 segundos
-  setTimeout(() => {
-    logger.error('❌ Timeout alcanzado, forzando cierre del servidor');
-    process.exit(1);
-  }, 15000);
-};
+    
+    // Forzar cierre después de 30 segundos
+    setTimeout(() => {
+      logger.error('⏰ Tiempo de espera agotado, forzando cierre');
+      process.exit(1);
+    }, 30000);
+  } else {
+    process.exit(0);
+  }
+}
 
-// ====================================================
-// MANEJO DE SEÑALES DEL SISTEMA Y ERRORES
-// ====================================================
-
-// Señales de cierre elegante
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Manejo de errores no capturados
 process.on('uncaughtException', (error) => {
-  logger.error('❌ Excepción no capturada:', {
-    message: error.message,
-    stack: error.stack,
-    timestamp: new Date().toISOString()
+  logger.error('🚨 Excepción no capturada', { 
+    error: error.message, 
+    stack: error.stack 
   });
-  
-  // En producción, cerrar elegantemente
-  if (process.env.NODE_ENV === 'production') {
-    gracefulShutdown('uncaughtException');
-  } else {
-    // En desarrollo, continuar con warning
-    logger.warn('⚠️  Continuando en modo desarrollo después de excepción no capturada');
-  }
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('❌ Promesa rechazada no manejada:', {
-    reason: reason,
-    promise: promise,
-    timestamp: new Date().toISOString()
+  logger.error('🚨 Promise rechazada no manejada', { 
+    reason: reason?.message || reason,
+    promise 
+  });
+  process.exit(1);
+});
+
+// ==========================================
+// CLUSTERING (OPCIONAL)
+// ==========================================
+
+if (SERVER_CONFIG.cluster.enabled && cluster.isMaster) {
+  logger.info(`🔄 Iniciando ${SERVER_CONFIG.cluster.workers} workers`);
+  
+  for (let i = 0; i < SERVER_CONFIG.cluster.workers; i++) {
+    cluster.fork();
+  }
+  
+  cluster.on('exit', (worker, code, signal) => {
+    logger.error('💥 Worker murió', { 
+      pid: worker.process.pid, 
+      code, 
+      signal 
+    });
+    
+    if (!worker.exitedAfterDisconnect) {
+      logger.info('🔄 Reiniciando worker...');
+      cluster.fork();
+    }
   });
   
-  // En producción, cerrar elegantemente
-  if (process.env.NODE_ENV === 'production') {
-    gracefulShutdown('unhandledRejection');
-  } else {
-    // En desarrollo, continuar con warning
-    logger.warn('⚠️  Continuando en modo desarrollo después de promesa rechazada');
-  }
-});
-
-// Manejo de warnings de Node.js
-process.on('warning', (warning) => {
-  logger.warn('⚠️  Node.js Warning:', {
-    name: warning.name,
-    message: warning.message,
-    stack: warning.stack
-  });
-});
-
-// ====================================================
-// INICIALIZACIÓN
-// ====================================================
-
-// Verificar que no estamos en modo test
-if (process.env.NODE_ENV !== 'test') {
-  // Inicializar el servidor
-  startServer().catch(error => {
-    logger.error('❌ Error fatal durante la inicialización:', error);
-    process.exit(1);
+} else {
+  // Iniciar aplicación (worker o proceso único)
+  startServer().then(({ server, io }) => {
+    global.server = server;
+    global.io = io;
   });
 }
 
-// ====================================================
-// EXPORTACIONES
-// ====================================================
-module.exports = { 
+module.exports = { app };
+/*module.exports = { 
   app, 
   server, 
   io,
   gracefulShutdown,
   getServerIP: () => SERVER_IP,
   getPort: () => PORT
-};
+};*/
