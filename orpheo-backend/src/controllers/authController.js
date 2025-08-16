@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const { User } = require('../models');
 const logger = require('../utils/logger');
-const emailService = require('../services/emailService');
+//const emailService = require('../services/emailService');
 const crypto = require('crypto');
 
 class AuthController {

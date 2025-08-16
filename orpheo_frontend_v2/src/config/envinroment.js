@@ -21,7 +21,7 @@ const getDevServerIP = () => {
     return manifest.debuggerHost.split(':')[0];
   }
   
-  return '191.112.178.230'; // IP por defecto
+  return '192.168.1.100'; // IP por defecto
 };
 
 // Configuración de entornos
@@ -30,11 +30,11 @@ export const ENV_CONFIG = {
     // Para Expo Go y desarrollo
     API_BASE_URL: isDevelopment ? 
       `http://${getDevServerIP()}:3001/api` : 
-      getEnvVar('API_BASE_URL', 'http://191.112.178.230:3001/api'),
+      getEnvVar('API_BASE_URL', 'http://192.168.1.100:3001/api'),
     
     WS_URL: isDevelopment ? 
       `ws://${getDevServerIP()}:3001` : 
-      getEnvVar('WS_URL', 'ws://191.112.178.230:3001'),
+      getEnvVar('WS_URL', 'ws://192.168.1.100:3001'),
     
     TIMEOUT: 15000,
     DEBUG: true,
@@ -42,8 +42,8 @@ export const ENV_CONFIG = {
   
   production: {
     // Para APK compilada con EAS
-    API_BASE_URL: getEnvVar('API_BASE_URL', 'http://191.112.178.230:3001/api'),
-    WS_URL: getEnvVar('WS_URL', 'ws://191.112.178.230:3001'),
+    API_BASE_URL: getEnvVar('API_BASE_URL', 'http://192.168.1.100:3001/api'),
+    WS_URL: getEnvVar('WS_URL', 'ws://192.168.1.100:3001'),
     TIMEOUT: 10000,
     DEBUG: false,
   }

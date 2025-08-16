@@ -31,7 +31,7 @@ const notificacionesRoutes = require('./routes/notificaciones');
 // Importar middleware
 const errorHandler = require('./middleware/errorHandler');
 const authMiddleware = require('./middleware/auth');
-const uploadMiddleware = require('./middleware/upload');
+//const uploadMiddleware = require('./middleware/upload');
 
 // ==========================================
 // CONFIGURACIÓN AVANZADA DEL SERVIDOR
@@ -793,7 +793,7 @@ async function initializeDatabase() {
   }
 }
 
-function createServer() {
+function createAppServer() {
   let server;
   
   if (SERVER_CONFIG.ssl.enabled) {
@@ -991,11 +991,3 @@ if (SERVER_CONFIG.cluster.enabled && cluster.isMaster) {
 }
 
 module.exports = { app };
-/*module.exports = { 
-  app, 
-  server, 
-  io,
-  gracefulShutdown,
-  getServerIP: () => SERVER_IP,
-  getPort: () => PORT
-};*/

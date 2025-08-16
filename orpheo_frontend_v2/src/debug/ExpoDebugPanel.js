@@ -62,7 +62,7 @@ const ExpoDebugPanel = ({ visible = false, onClose }) => {
               style={styles.input}
               value={newIP}
               onChangeText={setNewIP}
-              placeholder="192.168.1.14"
+              placeholder="192.168.1.100"
               placeholderTextColor={colors.textMuted}
             />
             <TouchableOpacity style={styles.button} onPress={updateIP}>
